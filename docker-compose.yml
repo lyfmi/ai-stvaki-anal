@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_bet_bot}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_bot} -d ${POSTGRES_DB:-ai_bet_bot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai-bot-net
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - ai-bot-net
+
+  searxng:
+    image: searxng/searxng:latest
+    profiles:
+      - searxng
+    environment:
+      SEARXNG_BASE_URL: http://searxng:8080/
+    networks:
+      - ai-bot-net
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "127.0.0.1:8010:8000"
+    env_file:
+      - .env
+    volumes:
+      - storage_data:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-bot-net
+    restart: unless-stopped
+
+  bot-service:
+    build:
+      context: ./bot
+    ports:
+      - "127.0.0.1:8011:8080"
+    env_file:
+      - .env
+    environment:
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - ai-bot-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:8012:80"
+    depends_on:
+      - backend
+    networks:
+      - ai-bot-net
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  storage_data:
+
+networks:
+  ai-bot-net:
+    driver: bridge
