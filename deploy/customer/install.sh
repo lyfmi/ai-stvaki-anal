@@ -114,6 +114,9 @@ collect_inputs() {
   echo "2) Нажмите Start / Отправьте любое сообщение"
   echo "3) Бот пришлёт ваш Id — это число, например 7649494487"
   echo ""
+  echo -e "${GREEN}После установки ваш аккаунт активируется автоматически —${NC}"
+  echo -e "${GREEN}воронку (подписка, регистрация 1win) проходить не нужно.${NC}"
+  echo ""
   prompt_required ADMIN_TELEGRAM_ID "Ваш Telegram ID (число из @userinfobot — только цифры, без @username)"
   validate_telegram_id "$ADMIN_TELEGRAM_ID" || fail "Некорректный Telegram ID. Нужно число из @userinfobot."
 
@@ -248,6 +251,7 @@ start_docker_stack() {
 
 configure_app_settings() {
   info "Запись настроек каналов, 1win и Tribute в БД..."
+  info "Активация вашего аккаунта (без воронки)..."
   if [[ "$DRY_RUN" == "1" ]]; then
     info "[dry-run] configure_app skipped"
     return 0
@@ -264,6 +268,7 @@ configure_app_settings() {
   export UNLIMITED_PRICE_AMOUNT="${UNLIMITED_PRICE_AMOUNT:-4900}"
   export UNLIMITED_PRICE_CURRENCY="rub"
   export SUPPORT_URL
+  export ADMIN_TELEGRAM_ID
 
   docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T \
     -e CHANNEL_ID -e CHANNEL_URL -e REPORTS_CHANNEL_ID \
@@ -271,40 +276,9 @@ configure_app_settings() {
     -e TRIBUTE_API_KEY -e TRIBUTE_SHOP_ID -e TRIBUTE_WEBHOOK_SECRET \
     -e TRIBUTE_ENABLED -e UNLIMITED_ENABLED \
     -e UNLIMITED_PRICE_AMOUNT -e UNLIMITED_PRICE_CURRENCY \
-    -e SUPPORT_URL \
-    backend python - <<'PY'
-import asyncio, os, sys
-sys.path.insert(0, "/app")
-from app.core.database import async_session_factory
-from app.services.settings import SettingsService
-
-async def main():
-    mapping = {
-        "channel_id": os.environ.get("CHANNEL_ID", ""),
-        "channel_url": os.environ.get("CHANNEL_URL", ""),
-        "reports_chat_id": os.environ.get("REPORTS_CHANNEL_ID", ""),
-        "support_url": os.environ.get("SUPPORT_URL", ""),
-        "affiliate_ref_url": os.environ.get("AFFILIATE_REF_URL", ""),
-        "affiliate_promo_code": os.environ.get("AFFILIATE_PROMO_CODE", ""),
-        "tribute_api_key": os.environ.get("TRIBUTE_API_KEY", ""),
-        "tribute_shop_id": os.environ.get("TRIBUTE_SHOP_ID", ""),
-        "tribute_webhook_secret": os.environ.get("TRIBUTE_WEBHOOK_SECRET", ""),
-        "tribute_enabled": os.environ.get("TRIBUTE_ENABLED", "false"),
-        "unlimited_enabled": os.environ.get("UNLIMITED_ENABLED", "false"),
-        "unlimited_price_amount": os.environ.get("UNLIMITED_PRICE_AMOUNT", "4900"),
-        "unlimited_price_currency": os.environ.get("UNLIMITED_PRICE_CURRENCY", "rub"),
-    }
-    async with async_session_factory() as session:
-        svc = SettingsService(session)
-        for k, v in mapping.items():
-            if v:
-                await svc.set(k, str(v))
-        await session.commit()
-    print("OK")
-
-asyncio.run(main())
-PY
-  ok "Настройки приложения сохранены"
+    -e SUPPORT_URL -e ADMIN_TELEGRAM_ID \
+    backend python - < "${INSTALL_DIR}/deploy/customer/scripts/configure_app.py"
+  ok "Настройки приложения сохранены, ваш аккаунт активирован"
 }
 
 setup_nginx_ssl() {

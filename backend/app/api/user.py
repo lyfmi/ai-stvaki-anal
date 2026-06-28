@@ -34,7 +34,10 @@ async def _get_user(
 
 @router.get("/me", response_model=UserOut)
 async def get_me(user=Depends(_get_user), db: AsyncSession = Depends(get_db)):
-    return await AdminService(db).enrich_user(user)
+    admin_svc = AdminService(db)
+    if await admin_svc.is_admin(user.telegram_id):
+        user = await FunnelService(db).ensure_full_access(user)
+    return await admin_svc.enrich_user(user)
 
 
 @router.get("/status", response_model=UserStatusOut)
@@ -42,6 +45,8 @@ async def get_status(user=Depends(_get_user), db: AsyncSession = Depends(get_db)
     limits = AttemptsLimitService(db)
     funnel = FunnelService(db)
     admin_svc = AdminService(db)
+    if await admin_svc.is_admin(user.telegram_id):
+        user = await funnel.ensure_full_access(user)
     can_analyze_limit, remaining, reset_at = await limits.can_analyze(user)
     can_funnel = await funnel.can_analyze_funnel(user, user.telegram_id)
     daily_limit = await limits.get_daily_limit()

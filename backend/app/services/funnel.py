@@ -73,6 +73,23 @@ class FunnelService:
             user.funnel_state = FunnelState.ACTIVE
         return user
 
+    async def ensure_full_access(self, user: User, *, language: str = "ru") -> User:
+        """Полный доступ без воронки — для bootstrap-админа и ручной активации."""
+        if not user.language:
+            user.language = language
+        user.is_channel_subscribed = True
+        user.is_registered = True
+        if not user.registered_at:
+            user.registered_at = datetime.now(UTC)
+        user.is_deposited = True
+        if not user.deposited_at:
+            user.deposited_at = datetime.now(UTC)
+        if user.has_unlimited:
+            user.funnel_state = FunnelState.UNLIMITED
+        else:
+            user.funnel_state = FunnelState.ACTIVE
+        return user
+
     async def grant_unlimited(self, user: User) -> User:
         user.has_unlimited = True
         user.funnel_state = FunnelState.UNLIMITED

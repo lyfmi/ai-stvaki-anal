@@ -20,7 +20,10 @@ async def get_user(
 ):
     funnel = FunnelService(db)
     user = await funnel.get_or_create(telegram_id)
-    return await AdminService(db).enrich_user(user)
+    admin_svc = AdminService(db)
+    if await admin_svc.is_admin(telegram_id):
+        user = await funnel.ensure_full_access(user)
+    return await admin_svc.enrich_user(user)
 
 
 @router.get("/settings")

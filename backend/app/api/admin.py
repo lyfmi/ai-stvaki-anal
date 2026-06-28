@@ -62,11 +62,7 @@ async def activate_user(
     funnel = FunnelService(db)
     admin_svc = AdminService(db)
     user = await funnel.get_or_create(body.telegram_id)
-    user.is_channel_subscribed = True
-    if user.funnel_state == "NEW":
-        user.funnel_state = "LANGUAGE_SELECTED"
-    await funnel.mark_registered(user, admin_bypass=True)
-    await funnel.mark_deposited(user, amount=0, admin_bypass=True)
+    user = await funnel.ensure_full_access(user)
     return await admin_svc.enrich_user(user)
 
 

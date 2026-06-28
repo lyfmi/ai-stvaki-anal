@@ -22,5 +22,8 @@ async def auth_telegram(body: AuthTelegramRequest, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=400, detail="No user in initData")
     funnel = FunnelService(db)
     user = await funnel.get_or_create(telegram_id, username=user_data.get("username"))
+    admin_svc = AdminService(db)
+    if await admin_svc.is_admin(telegram_id):
+        user = await funnel.ensure_full_access(user)
     token = f"stub-jwt-{telegram_id}"
-    return AuthTelegramResponse(token=token, user=await AdminService(db).enrich_user(user))
+    return AuthTelegramResponse(token=token, user=await admin_svc.enrich_user(user))

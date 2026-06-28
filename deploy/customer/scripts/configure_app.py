@@ -1,9 +1,10 @@
-"""Post-install configuration — writes app_settings from installer env."""
+"""Post-install configuration — writes app_settings and activates bootstrap admin."""
 import asyncio
 import os
 import sys
 
 from app.core.database import async_session_factory
+from app.services.funnel import FunnelService
 from app.services.settings import SettingsService
 
 
@@ -24,11 +25,20 @@ async def main() -> None:
         "unlimited_price_currency": os.environ.get("UNLIMITED_PRICE_CURRENCY", "rub"),
     }
 
+    admin_raw = os.environ.get("ADMIN_TELEGRAM_ID", "").strip()
+
     async with async_session_factory() as session:
         svc = SettingsService(session)
         for key, value in mapping.items():
             if value is not None and value != "":
                 await svc.set(key, str(value))
+
+        if admin_raw.isdigit():
+            funnel = FunnelService(session)
+            user = await funnel.get_or_create(int(admin_raw))
+            await funnel.ensure_full_access(user)
+            print(f"Bootstrap admin {admin_raw} activated (ACTIVE, без воронки).", file=sys.stderr)
+
         await session.commit()
 
     print("App settings configured.", file=sys.stderr)
