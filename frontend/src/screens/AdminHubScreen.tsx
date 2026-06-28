@@ -154,6 +154,19 @@ function AdminAffiliateTab({ apiCall }: { apiCall: any }) {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
+  useEffect(() => {
+    const loadAffiliate = async () => {
+      try {
+        const res = await apiCall("/admin/settings");
+        setRefUrl(res.affiliate_ref_url || "");
+        setPromoCode(res.affiliate_promo_code || "");
+      } catch (e) {
+        console.error("Failed to load affiliate settings", e);
+      }
+    };
+    loadAffiliate();
+  }, [apiCall]);
+
   const handleUpdate = async () => {
     try {
       setLoading(true);
