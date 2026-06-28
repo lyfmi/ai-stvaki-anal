@@ -42,10 +42,14 @@ class VisionExtractor:
     def __init__(self) -> None:
         self.client = NousClient()
 
-    async def extract(self, image_bytes: bytes) -> VisionPayload:
+    async def extract(self, image_bytes: bytes, filename: str = "photo.jpg") -> VisionPayload:
         if settings.ai_mock:
             return VisionPayload.model_validate(MOCK_VISION)
-        data = await self.client.vision_json(image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT)
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "jpg"
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
+            ext, "image/jpeg"
+        )
+        data = await self.client.vision_json(image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime)
         return VisionPayload.model_validate(data)
 
 
@@ -77,12 +81,12 @@ class AiAnalysisPipeline:
         self.search_enricher = SearchEnricher()
         self.synthesizer = Synthesizer()
 
-    async def analyze_screenshot(self, image_bytes: bytes, user_lang: str) -> dict:
+    async def analyze_screenshot(self, image_bytes: bytes, user_lang: str, filename: str = "photo.jpg") -> dict:
         latencies: dict[str, int] = {}
         total_start = time.perf_counter()
 
         t0 = time.perf_counter()
-        vision = await self.vision_extractor.extract(image_bytes)
+        vision = await self.vision_extractor.extract(image_bytes, filename=filename)
         latencies["vision"] = int((time.perf_counter() - t0) * 1000)
 
         if vision.parse_confidence == "failed":

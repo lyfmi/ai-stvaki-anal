@@ -222,10 +222,10 @@ async def on_photo(message: Message, bot: Bot):
             detail = e.response.json().get("detail", detail)
         except Exception:
             pass
-        if e.response.status_code == 422:
-            await message.answer(t.get("analysis_error", detail))
-        elif e.response.status_code == 403:
+        if e.response.status_code == 403:
             await message.answer(t.get("analysis_limit", detail))
+        elif e.response.status_code in (422, 500, 503):
+            await message.answer(t.get("analysis_error", detail))
         else:
             await message.answer(f"❌ {detail}")
 

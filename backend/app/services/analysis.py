@@ -36,9 +36,13 @@ class AnalysisService:
         image_path.write_bytes(image_bytes)
 
         try:
-            pipeline_result = await self.pipeline.analyze_screenshot(image_bytes, user.language)
+            pipeline_result = await self.pipeline.analyze_screenshot(
+                image_bytes, user.language, filename=filename
+            )
         except UnreadableScreenshotError as e:
             raise ValueError(str(e)) from e
+        except RuntimeError as e:
+            raise ValueError("AI analysis failed") from e
 
         vision = pipeline_result["vision"]
         search = pipeline_result["search"]

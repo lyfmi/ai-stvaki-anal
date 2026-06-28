@@ -1,9 +1,9 @@
 VISION_SYSTEM_PROMPT = """You are a sports betting screenshot parser.
 Extract structured data from the betting screenshot image.
 Do NOT make betting recommendations — only extract visible information.
-Respond with valid JSON only, no markdown."""
+Output compact valid JSON only. No markdown, no reasoning text."""
 
-VISION_USER_PROMPT = """Analyze this betting screenshot and return JSON:
+VISION_USER_PROMPT = """Analyze this betting screenshot. Return JSON only:
 {
   "sport": "football|basketball|tennis|hockey|other",
   "league": "league name or null",
