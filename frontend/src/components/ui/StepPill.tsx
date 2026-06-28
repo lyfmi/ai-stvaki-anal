@@ -20,61 +20,51 @@ export function StepPills({ t, activeStep = null }: StepPillProps) {
   };
 
   return (
-    <div className="w-full px-1">
-      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
-        {steps.map(({ key, icon: Icon, step }, idx) => {
-          const active = activeStep === step;
-          const done = activeStep !== null && activeStep > step;
-          const lineDone = activeStep !== null && activeStep > step;
-          return (
-            <div key={key} className="contents">
+    <div className="flex items-start w-full px-1">
+      {steps.map(({ key, icon: Icon, step }, idx) => {
+        const active = activeStep === step;
+        const done = activeStep !== null && activeStep > step;
+        const lineDone = activeStep !== null && activeStep > step;
+
+        return (
+          <div key={key} className="flex items-start flex-1 min-w-0">
+            <div
+              className={`flex flex-col items-center flex-1 min-w-0 transition-all duration-300 ${
+                active ? "opacity-100" : done ? "opacity-70" : "opacity-40"
+              }`}
+            >
               <div
-                className={`flex justify-center transition-all duration-300 ${
-                  active ? "opacity-100" : done ? "opacity-70" : "opacity-40"
+                className={`w-9 h-9 shrink-0 rounded-full border flex items-center justify-center transition-all duration-300 ${
+                  active
+                    ? "border-accent bg-accent/10 shadow-accent"
+                    : done
+                      ? "border-accent/50 bg-accent/5"
+                      : "border-borderSubtle bg-surface"
                 }`}
               >
-                <div
-                  className={`w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-300 ${
-                    active
-                      ? "border-accent bg-accent/10 shadow-accent"
-                      : done
-                        ? "border-accent/50 bg-accent/5"
-                        : "border-borderSubtle bg-surface"
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${active || done ? "text-accent" : "text-textMuted"}`} />
-                </div>
+                <Icon className={`w-4 h-4 ${active || done ? "text-accent" : "text-textMuted"}`} />
               </div>
-              {idx < steps.length - 1 && (
-                <div
-                  className={`h-px w-8 sm:w-10 mx-1 ${
-                    lineDone ? "bg-accent/40" : "bg-borderSubtle"
-                  }`}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] mt-1.5">
-        {steps.map(({ key, step }, idx) => {
-          const active = activeStep === step;
-          const done = activeStep !== null && activeStep > step;
-          return (
-            <div key={key} className="contents">
               <span
-                className={`text-[10px] text-center leading-tight min-h-[2.5em] px-0.5 transition-all duration-300 ${
+                className={`mt-1.5 w-full text-[10px] text-center leading-tight min-h-[2.5em] block transition-all duration-300 ${
                   active ? "text-accent" : done ? "text-textMuted opacity-70" : "text-textMuted opacity-40"
                 }`}
               >
                 {labels[key]}
               </span>
-              {idx < steps.length - 1 && <span aria-hidden="true" />}
             </div>
-          );
-        })}
-      </div>
+
+            {idx < steps.length - 1 && (
+              <div className="shrink-0 flex items-center h-9 px-0.5 sm:px-1" aria-hidden="true">
+                <div
+                  className={`h-px w-full min-w-[1.5rem] sm:min-w-[2rem] max-w-[2.5rem] ${
+                    lineDone ? "bg-accent/40" : "bg-borderSubtle"
+                  }`}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
