@@ -52,6 +52,12 @@ class AiAnalysis(Base):
     pipeline_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     latency_ms: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     raw_ai_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(32), default="screenshot")
+    analysis_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    match_status_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    match_datetime_msk: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_betting_recommendation: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)
+    premium_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship(back_populates="analyses")

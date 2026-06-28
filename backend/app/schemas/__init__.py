@@ -50,6 +50,9 @@ class VisionPayload(BaseModel):
     screenshot_notes: str | None = None
     search_queries: list[str] = Field(default_factory=list)
     parse_confidence: str = "high"
+    datetime_on_screenshot: bool = False
+    odds_on_screenshot: bool = False
+    match_status_hint: str = "unknown"
 
 
 class SearchResultItem(BaseModel):
@@ -65,6 +68,33 @@ class SearchPayload(BaseModel):
     search_status: str = "ok"
 
 
+class FormBarItem(BaseModel):
+    team: str
+    wins: int = 0
+    draws: int = 0
+    losses: int = 0
+
+
+class KeyStatItem(BaseModel):
+    label: str
+    home: str
+    away: str
+
+
+class PremiumInsights(BaseModel):
+    form_bars: list[FormBarItem] = Field(default_factory=list)
+    h2h: str = ""
+    key_stats: list[KeyStatItem] = Field(default_factory=list)
+    trends: list[str] = Field(default_factory=list)
+    advanced_arguments: list[str] = Field(default_factory=list)
+
+
+class MatchContextOut(BaseModel):
+    analysis_mode: str = "pre_match"
+    match_status_label: str = ""
+    match_datetime_msk: str | None = None
+
+
 class AnalysisResult(BaseModel):
     recommendation: str
     market: str | None = None
@@ -74,6 +104,11 @@ class AnalysisResult(BaseModel):
     arguments: list[str] = Field(default_factory=list)
     confidence: str = "medium"
     explanation: str = ""
+    analysis_mode: str = "pre_match"
+    match_status_label: str = ""
+    match_datetime_msk: str | None = None
+    is_betting_recommendation: bool = True
+    premium_insights: PremiumInsights | None = None
 
 
 class AnalysisOut(BaseModel):
@@ -86,6 +121,11 @@ class AnalysisOut(BaseModel):
     arguments: list[str] | None
     explanation: str | None
     created_at: datetime
+    analysis_mode: str | None = None
+    match_status_label: str | None = None
+    match_datetime_msk: str | None = None
+    is_betting_recommendation: bool | None = True
+    source_type: str | None = "screenshot"
 
     model_config = {"from_attributes": True}
 
@@ -95,6 +135,16 @@ class AnalysisDetailOut(AnalysisOut):
     search_payload: dict | None = None
     pipeline_version: str | None = None
     latency_ms: dict | None = None
+    premium_insights: PremiumInsights | None = None
+
+
+class MatchOfDayOut(BaseModel):
+    home_team: str
+    away_team: str
+    league: str
+    kickoff_msk: str
+    teaser: str
+    cached: bool = False
 
 
 class AdminStatsOut(BaseModel):

@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.schemas import AnalysisResult
+from app.schemas import AnalysisResult, PremiumInsights
 
 REQUIRED_FIELDS = (
     "recommendation",
@@ -14,6 +14,9 @@ REQUIRED_FIELDS = (
     "arguments",
     "confidence",
     "explanation",
+    "analysis_mode",
+    "match_status_label",
+    "is_betting_recommendation",
 )
 
 FIELD_ALIASES: dict[str, tuple[str, ...]] = {
@@ -41,6 +44,15 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "arguments": ("arguments", "reasons", "pros", "аргументы", "причины"),
     "confidence": ("confidence", "conf", "уверенность"),
     "explanation": ("explanation", "summary", "comment", "объяснение", "комментарий"),
+    "analysis_mode": ("analysis_mode", "mode", "match_mode"),
+    "match_status_label": ("match_status_label", "status_label", "status"),
+    "match_datetime_msk": ("match_datetime_msk", "datetime_msk", "kickoff_msk"),
+    "is_betting_recommendation": (
+        "is_betting_recommendation",
+        "betting_recommendation",
+        "can_bet",
+    ),
+    "premium_insights": ("premium_insights", "premium", "vip_insights"),
 }
 
 
@@ -129,7 +141,26 @@ def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
     if "arguments" in normalized:
         normalized["arguments"] = _coerce_arguments(normalized["arguments"])
 
-    for field in ("risk", "confidence", "market", "explanation"):
+    if normalized.get("is_betting_recommendation") is not None:
+        val = normalized["is_betting_recommendation"]
+        if isinstance(val, str):
+            normalized["is_betting_recommendation"] = val.strip().lower() in (
+                "true",
+                "1",
+                "yes",
+                "да",
+            )
+        else:
+            normalized["is_betting_recommendation"] = bool(val)
+
+    premium = normalized.get("premium_insights")
+    if isinstance(premium, dict):
+        try:
+            normalized["premium_insights"] = PremiumInsights.model_validate(premium)
+        except ValidationError:
+            normalized["premium_insights"] = None
+
+    for field in ("risk", "confidence", "market", "explanation", "analysis_mode", "match_status_label"):
         if field in normalized and normalized[field] is not None:
             normalized[field] = str(normalized[field]).strip()
 

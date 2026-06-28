@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     nous_api_base: str = "https://inference-api.nousresearch.com/v1"
     nous_model: str = "stepfun/step-3.7-flash:free"
     ai_mock: bool = False
-    ai_pipeline_version: str = "v2-search"
+    ai_pipeline_version: str = "v3-matchday"
 
     search_provider: str = "duckduckgo"
     search_max_queries: int = 2

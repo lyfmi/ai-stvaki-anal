@@ -7,6 +7,7 @@ from app.schemas import (
     AnalysisDetailOut,
     AnalysisOut,
     LanguageUpdate,
+    MatchOfDayOut,
     PaymentCreateOut,
     UserOut,
     UserStatusOut,
@@ -15,6 +16,7 @@ from app.services.admin import AdminService
 from app.services.analysis import AnalysisService
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
+from app.services.match_of_day import MatchOfDayService
 from app.services.settings import SettingsService
 from app.services.telegram_bot import is_channel_member
 from app.services.tribute import TributeService
@@ -102,13 +104,43 @@ async def analyze_screenshot(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
-    return analysis
+    return AnalysisService.to_out(analysis)
+
+
+@router.get("/match-of-day", response_model=MatchOfDayOut)
+async def get_match_of_day(
+    user=Depends(_get_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ = user
+    return await MatchOfDayService().get_match()
+
+
+@router.post("/match-of-day/predict", response_model=AnalysisOut)
+async def predict_match_of_day(
+    user=Depends(_get_user),
+    db: AsyncSession = Depends(get_db),
+    telegram_id: int = Depends(require_internal_auth),
+):
+    if telegram_id is None:
+        raise HTTPException(status_code=401, detail="X-Telegram-User-Id required")
+    svc = AnalysisService(db)
+    try:
+        analysis = await svc.predict_match_of_day(user, telegram_id)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    return AnalysisService.to_out(analysis)
 
 
 @router.get("/analyses", response_model=list[AnalysisOut])
 async def list_analyses(user=Depends(_get_user), db: AsyncSession = Depends(get_db)):
     svc = AnalysisService(db)
-    return await svc.list_for_user(user)
+    rows = await svc.list_for_user(user)
+    return [AnalysisService.to_out(r) for r in rows]
 
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisDetailOut)
@@ -119,7 +151,7 @@ async def get_analysis(analysis_id: str, user=Depends(_get_user), db: AsyncSessi
     analysis = await svc.get_by_id(user, uuid.UUID(analysis_id))
     if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
-    return analysis
+    return AnalysisService.to_detail(analysis)
 
 
 @router.get("/settings", response_model=dict[str, str])

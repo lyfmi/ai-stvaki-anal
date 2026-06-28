@@ -93,6 +93,11 @@ function DestinationView({
           apiCall={ctx.apiCall}
           cached={ctx.analysisCache[route.id]}
           t={ctx.t}
+          isUnlimited={
+            Boolean(ctx.statusInfo?.user?.has_unlimited) ||
+            ctx.statusInfo?.user?.funnel_state === "UNLIMITED"
+          }
+          settings={ctx.settings}
           onBack={() => {
             if (activeTab === "home") pop();
             else pop();

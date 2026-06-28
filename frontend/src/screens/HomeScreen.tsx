@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Crown, Upload, Zap } from "lucide-react";
 import { gsap } from "gsap";
 import { analyzeScreenshot } from "../api";
+import { MatchOfDayCard } from "../components/MatchOfDayCard";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { PrimaryButton } from "../components/ui/PrimaryButton";
 import { ProcessingOverlay } from "../components/ui/ProcessingOverlay";
@@ -173,6 +174,15 @@ export function HomeScreen({
           <p>{errorMsg}</p>
         </div>
       )}
+
+      <MatchOfDayCard
+        t={t}
+        apiCall={apiCall}
+        canAnalyze={canAnalyze}
+        hasFullAccess={hasFullAccess}
+        onResult={onResult}
+        onRefreshStatus={onRefreshStatus}
+      />
 
       {isUploading ? (
         <div className="home-fade">
