@@ -119,14 +119,26 @@ async def cmd_start(message: Message):
     await show_funnel_step(message, message.from_user.id, user)
 
 
+@router.message(Command("language"))
+async def cmd_language(message: Message):
+    user = await backend.get_user(message.from_user.id)
+    locale = user.get("language") or "ru"
+    t = await get_t(locale)
+    await message.answer(t.get("choose_language", "Choose language:"), reply_markup=language_keyboard())
+
+
 @router.callback_query(F.data.startswith("lang:"))
 async def on_language(callback: CallbackQuery):
     lang = callback.data.split(":")[1]
     clear_translation_cache(lang)
     user = await backend.set_language(callback.from_user.id, lang)
     await get_t(lang, force=True)
-    await callback.answer()
-    await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
+    t = await get_t(lang)
+    await callback.answer(t.get("language_changed", "OK")[:200])
+    if user.get("funnel_state") == "NEW":
+        await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
+    else:
+        await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
 
 
 @router.callback_query(F.data == "check_sub")

@@ -129,7 +129,11 @@ const i18n = {
     unlimited_already: "У вас уже активирован безлимитный доступ!",
     yes: "Да",
     no: "Нет",
-    loading: "Загрузка..."
+    loading: "Загрузка...",
+    lang_changed: "✅ Язык изменён",
+    funnel_locked_title: "🔒 Mini App пока закрыт",
+    funnel_locked_desc: "Сначала пройдите воронку в боте: подписка → регистрация в БК → депозит. После этого откроется анализ скриншотов.",
+    funnel_locked_bot: "Вернуться в бот и продолжить",
   },
   en: {
     dashboard: "Dashboard",
@@ -188,7 +192,11 @@ const i18n = {
     unlimited_already: "You already have Unlimited access active!",
     yes: "Yes",
     no: "No",
-    loading: "Loading..."
+    loading: "Loading...",
+    lang_changed: "✅ Language updated",
+    funnel_locked_title: "🔒 Mini App is locked",
+    funnel_locked_desc: "Complete the bot funnel first: subscribe → register at the bookmaker → deposit. Then screenshot analysis will unlock.",
+    funnel_locked_bot: "Return to bot to continue",
   }
 };
 
@@ -212,6 +220,15 @@ export default function App() {
   const [mockUserId, setMockUserId] = useState<string>("7649494487"); // Admin default
 
   const t = i18n[lang];
+  const ADMIN_TELEGRAM_ID = 7649494487;
+  const hasFullAccess = Boolean(
+    user &&
+      (user.telegram_id === ADMIN_TELEGRAM_ID ||
+        user.is_deposited ||
+        user.has_unlimited ||
+        ["ACTIVE", "UNLIMITED", "LIMIT_EXCEEDED"].includes(user.funnel_state))
+  );
+  const allowedLockedRoutes = ["/", "/profile", "/support"];
 
   // Helper for requests
   const apiCall = async (endpoint: string, options: RequestInit = {}) => {
@@ -251,14 +268,6 @@ export default function App() {
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-      
-      // Auto-set language from telegram locale
-      const userLang = window.Telegram.WebApp.initDataUnsafe?.user?.language_code;
-      if (userLang && (userLang.startsWith("ru") || userLang.startsWith("uk") || userLang.startsWith("be"))) {
-        setLang("ru");
-      } else {
-        setLang("en");
-      }
     }
   }, []);
 
@@ -323,6 +332,14 @@ export default function App() {
     }
   }, [token]);
 
+  // Block premium routes until funnel is complete
+  useEffect(() => {
+    if (!user || hasFullAccess) return;
+    if (!allowedLockedRoutes.includes(currentRoute) && !currentRoute.startsWith("/analyze/result/")) {
+      setRoute("/");
+    }
+  }, [user, hasFullAccess, currentRoute]);
+
   // BackButton management
   useEffect(() => {
     const backButton = window.Telegram?.WebApp?.BackButton;
@@ -367,13 +384,16 @@ export default function App() {
   // Toggle Language Handler
   const handleLanguageChange = async (newLang: "ru" | "en") => {
     try {
-      await apiCall("/user/language", {
+      const updated = await apiCall("/user/language", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ language: newLang }),
       });
       setLang(newLang);
-      fetchStatusAndSettings();
+      setUser(updated);
+      setInfoMsg(i18n[newLang].lang_changed);
+      setTimeout(() => setInfoMsg(null), 2500);
+      await fetchStatusAndSettings();
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to set language");
     }
@@ -451,9 +471,13 @@ export default function App() {
             getResetCountdown={getResetCountdown}
             lang={lang}
             t={t}
+            hasFullAccess={hasFullAccess}
           />
         );
       case "/analyze":
+        if (!hasFullAccess) {
+          return <FunnelLockedScreen t={t} />;
+        }
         return (
           <UploadScreen 
             token={token} 
@@ -465,6 +489,9 @@ export default function App() {
           />
         );
       case "/history":
+        if (!hasFullAccess) {
+          return <FunnelLockedScreen t={t} />;
+        }
         return (
           <HistoryScreen 
             apiCall={apiCall}
@@ -509,6 +536,9 @@ export default function App() {
         );
       default:
         if (currentRoute.startsWith("/analyze/result/")) {
+          if (!hasFullAccess) {
+            return <FunnelLockedScreen t={t} />;
+          }
           const analysisId = currentRoute.split("/").pop() || "";
           return (
             <ResultScreen 
@@ -545,8 +575,9 @@ export default function App() {
             {t.dashboard}
           </button>
           <button 
-            onClick={() => setRoute("/history")} 
-            className={`text-xs font-medium px-2.5 py-1.5 rounded-full transition-all duration-200 ${currentRoute.startsWith("/history") || currentRoute.startsWith("/analyze/result") ? "bg-champagne/10 text-champagne" : "text-slate-400 hover:text-white"}`}
+            onClick={() => hasFullAccess && setRoute("/history")} 
+            disabled={!hasFullAccess}
+            className={`text-xs font-medium px-2.5 py-1.5 rounded-full transition-all duration-200 ${!hasFullAccess ? "text-slate-600 cursor-not-allowed opacity-50" : currentRoute.startsWith("/history") || currentRoute.startsWith("/analyze/result") ? "bg-champagne/10 text-champagne" : "text-slate-400 hover:text-white"}`}
           >
             {t.history}
           </button>
@@ -602,6 +633,31 @@ export default function App() {
 }
 
 // ---------------------------------------------------------
+// FUNNEL LOCKED SCREEN
+// ---------------------------------------------------------
+function FunnelLockedScreen({ t }: { t: (typeof i18n)["ru"] }) {
+  const handleClose = () => {
+    window.Telegram?.WebApp?.close();
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center gap-6 py-16 px-4">
+      <ShieldAlert className="w-16 h-16 text-champagne/80" />
+      <div className="flex flex-col gap-2">
+        <h2 className="text-xl font-bold text-white">{t.funnel_locked_title}</h2>
+        <p className="text-sm text-slate-400 leading-relaxed">{t.funnel_locked_desc}</p>
+      </div>
+      <button
+        onClick={handleClose}
+        className="magnetic-btn bg-champagne text-obsidian font-bold py-3 px-6 rounded-2xl"
+      >
+        {t.funnel_locked_bot}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------
 // DASHBOARD SCREEN
 // ---------------------------------------------------------
 interface DashboardProps {
@@ -613,9 +669,10 @@ interface DashboardProps {
   getResetCountdown: () => string;
   lang: "ru" | "en";
   t: any;
+  hasFullAccess: boolean;
 }
 
-function DashboardScreen({ user, statusInfo, settings, setRoute, onCheckSub, getResetCountdown, lang, t }: DashboardProps) {
+function DashboardScreen({ user, statusInfo, settings, setRoute, onCheckSub, getResetCountdown, lang, t, hasFullAccess }: DashboardProps) {
   // Entrances Animations with GSAP
   const dashboardRef = useRef<HTMLDivElement>(null);
   
@@ -758,6 +815,16 @@ function DashboardScreen({ user, statusInfo, settings, setRoute, onCheckSub, get
 
   return (
     <div ref={dashboardRef} className="flex flex-col gap-6">
+      {!hasFullAccess && (
+        <div className="fade-up-item p-4 rounded-2xl border border-amber-500/30 bg-amber-950/20 flex items-start gap-3 text-left">
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-bold text-amber-200">{t.funnel_locked_title}</h3>
+            <p className="text-xs text-slate-400 mt-1">{t.funnel_locked_desc}</p>
+          </div>
+        </div>
+      )}
+
       {/* Hero Header */}
       <div className="fade-up-item relative rounded-container-large overflow-hidden border border-champagne/10 min-h-[30vh] flex flex-col justify-end p-6 bg-gradient-to-t from-obsidian via-obsidian/60 to-transparent">
         <div className="absolute inset-0 z-0 bg-[url('https://images.unsplash.com/photo-1540747737956-37872404a82f?q=80&w=600')] bg-cover bg-center opacity-20 filter grayscale contrast-125" />
@@ -850,21 +917,21 @@ function DashboardScreen({ user, statusInfo, settings, setRoute, onCheckSub, get
 
       {/* Action CTA Buttons */}
       <div className="fade-up-item flex flex-col gap-3 mt-4">
-        {statusInfo?.can_analyze && !limitReached ? (
+        {hasFullAccess && statusInfo?.can_analyze && !limitReached ? (
           <button 
             onClick={() => setRoute("/analyze")} 
             className="magnetic-btn w-full bg-champagne text-obsidian font-extrabold font-sans py-4 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-xl interactive-lift"
           >
             <Camera className="w-5 h-5" /> {t.cta_analyze}
           </button>
-        ) : (
+        ) : hasFullAccess ? (
           <button 
             onClick={() => setRoute("/unlimited")} 
             className="magnetic-btn w-full bg-gradient-to-r from-champagne via-amber-500 to-champagne text-obsidian font-extrabold font-sans py-4 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-xl interactive-lift"
           >
             <Crown className="w-5 h-5 fill-obsidian" /> {t.cta_get_unlimited}
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* Funnel Steps State Machine */}

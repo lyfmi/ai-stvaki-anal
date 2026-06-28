@@ -12,9 +12,11 @@ TRANSLATIONS = {
         "welcome": (
             "👋 <b>Добро пожаловать в AI Анализ Стavок!</b>\n\n"
             "🤖 Бот проанализирует скриншот события и подскажет, куда ставить.\n\n"
-            "🌍 Выберите язык интерфейса:"
+            "🌍 Выберите язык интерфейса:\n"
+            "💡 Сменить язык позже: /language"
         ),
-        "choose_language": "🌍 Выберите язык:",
+        "choose_language": "🌍 Выберите язык / Choose language:",
+        "language_changed": "✅ Язык изменён",
         "subscribe_channel": (
             "📢 <b>Шаг 1 — подписка на канал</b>\n\n"
             "Подпишитесь на наш Telegram-канал с прогнозами и сигналами.\n\n"
@@ -80,9 +82,11 @@ TRANSLATIONS = {
         "welcome": (
             "👋 <b>Welcome to AI Bet Analysis!</b>\n\n"
             "🤖 The bot analyzes event screenshots and suggests where to bet.\n\n"
-            "🌍 Choose your language:"
+            "🌍 Choose your language:\n"
+            "💡 Change later: /language"
         ),
-        "choose_language": "🌍 Choose language:",
+        "choose_language": "🌍 Choose language / Выберите язык:",
+        "language_changed": "✅ Language updated",
         "subscribe_channel": (
             "📢 <b>Step 1 — channel subscription</b>\n\n"
             "Subscribe to our Telegram channel with picks and signals.\n\n"
