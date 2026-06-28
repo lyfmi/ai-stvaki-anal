@@ -1,25 +1,30 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       colors: {
-        obsidian: "#0D0D12",
-        champagne: "#C9A84C",
-        ivory: "#FAF8F5",
-        slateCustom: "#2A2A35",
-        emeraldCustom: "#0F766E", // Emerald green for signals/wins
+        appBg: "#0A0A0A",
+        surface: "#111111",
+        surfaceElevated: "#161616",
+        borderSubtle: "#1F1F1F",
+        accent: "#00FF9D",
+        accentMuted: "#00FF9D33",
+        textPrimary: "#F5F5F5",
+        textMuted: "#737373",
+        danger: "#FF453A",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
-        drama: ["Playfair Display", "serif"],
-        mono: ["JetBrains Mono", "monospace"],
+      },
+      borderRadius: {
+        container: "1.25rem",
+        containerLg: "1.75rem",
+      },
+      fontSize: {
+        xxs: "0.625rem",
       },
     },
   },
   plugins: [],
-}
-
+};
