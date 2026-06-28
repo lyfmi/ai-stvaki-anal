@@ -110,6 +110,7 @@ class SettingsUpdate(BaseModel):
     affiliate_promo_code: str | None = None
     channel_id: str | None = None
     channel_url: str | None = None
+    reports_chat_id: str | None = None
     support_url: str | None = None
     unlimited_enabled: bool | None = None
     unlimited_price_amount: int | None = None

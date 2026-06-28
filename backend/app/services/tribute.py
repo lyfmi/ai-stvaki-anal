@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models import TributePayment, User
 from app.services.funnel import FunnelService
+from app.services.telegram_notify import TelegramNotify
 
 
 class TributeService:
@@ -18,6 +19,7 @@ class TributeService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.funnel = FunnelService(db)
+        self.notify = TelegramNotify()
 
     async def create_order(self, user: User, title: str, amount: int, currency: str) -> dict:
         if not settings.tribute_api_key:
@@ -112,6 +114,14 @@ class TributeService:
                             raw_payload=payload,
                         )
                     )
+            await self.notify.report_unlimited_paid(
+                self.db,
+                user=user,
+                telegram_id=telegram_id,
+                amount=payload.get("amount"),
+                currency=payload.get("currency"),
+                order_uuid=order_uuid,
+            )
             return True
 
         if event_name in revoke_events:
@@ -121,6 +131,12 @@ class TributeService:
                 if payment:
                     payment.status = "refunded"
                     payment.raw_payload = payload
+            await self.notify.report_unlimited_refund(
+                self.db,
+                user=user,
+                telegram_id=telegram_id,
+                order_uuid=order_uuid,
+            )
             return True
 
         if event_name == "shopOrderPaymentFailed":
@@ -129,6 +145,11 @@ class TributeService:
                 if payment:
                     payment.status = "failed"
                     payment.raw_payload = payload
+            await self.notify.report_payment_failed(
+                self.db,
+                telegram_id=telegram_id,
+                order_uuid=order_uuid,
+            )
             return True
 
         return True

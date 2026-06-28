@@ -13,6 +13,7 @@ class SettingsService:
         "affiliate_sub_param": "sub1",
         "channel_id": "",
         "channel_url": "https://t.me/example",
+        "reports_chat_id": "",
         "support_url": "https://t.me/support",
         "unlimited_enabled": "true",
         "unlimited_price_amount": "4900",

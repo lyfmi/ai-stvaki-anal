@@ -8,10 +8,12 @@ from app.core.security import verify_tribute_signature
 from app.schemas import NotifyRequest, UserOut
 from app.services.funnel import FunnelService
 from app.services.postback import PostbackService
+from app.services.telegram_notify import TelegramNotify
 from app.services.tribute import TributeService
 
 router = APIRouter(prefix="/api/webhook", tags=["webhooks"])
 payments_router = APIRouter(prefix="/api/payments", tags=["payments"])
+notify = TelegramNotify()
 
 
 def _extract_telegram_id(request: Request) -> int | None:
@@ -40,7 +42,9 @@ async def postback_registration(request: Request, db: AsyncSession = Depends(get
         return {"ok": False, "error": "telegram_id not found"}
     payload = {"query": dict(request.query_params), "method": request.method}
     svc = PostbackService(db)
-    user = await svc.handle_registration(telegram_id, payload)
+    user, is_new = await svc.handle_registration(telegram_id, payload)
+    if is_new:
+        await notify.report_registration(db, user=user, telegram_id=telegram_id)
     return {"ok": True, "telegram_id": telegram_id, "funnel_state": user.funnel_state if user else None}
 
 
@@ -52,7 +56,9 @@ async def postback_deposit(request: Request, db: AsyncSession = Depends(get_db))
     amount = _extract_amount(request)
     payload = {"query": dict(request.query_params), "method": request.method}
     svc = PostbackService(db)
-    user = await svc.handle_deposit(telegram_id, amount, payload)
+    user, is_new = await svc.handle_deposit(telegram_id, amount, payload)
+    if is_new:
+        await notify.report_deposit(db, user=user, telegram_id=telegram_id, amount=amount)
     return {"ok": True, "telegram_id": telegram_id, "funnel_state": user.funnel_state if user else None}
 
 

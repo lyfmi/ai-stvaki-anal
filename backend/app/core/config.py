@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     tribute_shop_id: str = ""
     tribute_webhook_secret: str = ""
 
+    reports_chat_id: str = ""
+
     daily_attempts_limit: int = 10
     storage_path: str = "/app/storage"
 

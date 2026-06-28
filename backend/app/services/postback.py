@@ -24,11 +24,11 @@ class PostbackService:
         result = await self.db.execute(select(PostbackEvent).where(PostbackEvent.payload_hash == payload_hash))
         return result.scalar_one_or_none() is not None
 
-    async def handle_registration(self, telegram_id: int, payload: dict) -> User | None:
+    async def handle_registration(self, telegram_id: int, payload: dict) -> tuple[User | None, bool]:
         phash = self._payload_hash("registration", telegram_id, payload)
         if await self._is_duplicate(phash):
             result = await self.db.execute(select(User).where(User.telegram_id == telegram_id))
-            return result.scalar_one_or_none()
+            return result.scalar_one_or_none(), False
 
         admin_bypass = telegram_id in settings.admin_ids
         user = await self.funnel.get_or_create(telegram_id)
@@ -45,13 +45,13 @@ class PostbackService:
                 processed=True,
             )
         )
-        return user
+        return user, True
 
-    async def handle_deposit(self, telegram_id: int, amount: float | None, payload: dict) -> User | None:
+    async def handle_deposit(self, telegram_id: int, amount: float | None, payload: dict) -> tuple[User | None, bool]:
         phash = self._payload_hash("deposit", telegram_id, payload)
         if await self._is_duplicate(phash):
             result = await self.db.execute(select(User).where(User.telegram_id == telegram_id))
-            return result.scalar_one_or_none()
+            return result.scalar_one_or_none(), False
 
         admin_bypass = telegram_id in settings.admin_ids
         user = await self.funnel.get_or_create(telegram_id)
@@ -69,4 +69,4 @@ class PostbackService:
                 processed=True,
             )
         )
-        return user
+        return user, True
