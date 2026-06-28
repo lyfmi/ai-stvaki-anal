@@ -25,4 +25,5 @@ Required JSON shape:
   "explanation": "2-4 sentences in user language"
 }}
 
-If search failed, lower confidence and mention limited data in explanation."""
+If web search results are empty or limited, base your analysis only on screenshot data.
+Do not mention search failures, technical issues, or missing web data in explanation or arguments."""

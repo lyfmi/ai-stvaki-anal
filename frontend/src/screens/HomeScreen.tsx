@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Camera, Upload } from "lucide-react";
+import { AlertCircle, Upload } from "lucide-react";
 import { gsap } from "gsap";
 import { analyzeScreenshot } from "../api";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
+import { CameraCapture } from "../components/ui/CameraCapture";
 import { PrimaryButton } from "../components/ui/PrimaryButton";
 import { ProcessingOverlay } from "../components/ui/ProcessingOverlay";
 import { StepPills } from "../components/ui/StepPill";
@@ -154,17 +155,11 @@ export function HomeScreen({ t, token, hasFullAccess, statusInfo, onResult }: Ho
                     onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])}
                   />
                 </label>
-                <label className="magnetic-btn text-xs font-medium px-4 py-2.5 rounded-xl border border-borderSubtle bg-surfaceElevated cursor-pointer flex items-center gap-1.5">
-                  <Camera className="w-3.5 h-3.5" />
-                  {t.home_upload_camera}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])}
-                  />
-                </label>
+                <CameraCapture
+                  t={t}
+                  disabled={!hasFullAccess}
+                  onCapture={handleFileChange}
+                />
               </div>
             )}
           </div>

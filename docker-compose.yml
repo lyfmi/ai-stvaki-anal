@@ -30,12 +30,13 @@ services:
 
   searxng:
     image: searxng/searxng:latest
-    profiles:
-      - searxng
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
     environment:
       SEARXNG_BASE_URL: http://searxng:8080/
     networks:
       - ai-bot-net
+    restart: unless-stopped
 
   backend:
     build:
@@ -51,6 +52,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      searxng:
+        condition: service_started
     networks:
       - ai-bot-net
     restart: unless-stopped

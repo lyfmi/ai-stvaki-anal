@@ -1,7 +1,5 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-from app.config import settings
-
 
 def language_keyboard() -> InlineKeyboardMarkup:
     langs = [
@@ -45,10 +43,25 @@ def deposit_keyboard(ref_url: str, t: dict) -> InlineKeyboardMarkup:
     )
 
 
-def active_keyboard(support_url: str, t: dict) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=t.get("btn_support", "Support"), url=support_url)]]
-    )
+def active_keyboard(
+    webapp_url: str,
+    payment_url: str | None,
+    t: dict,
+    *,
+    show_unlimited: bool = True,
+) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=t.get("btn_open_webapp", "Open Mini App"),
+                web_app=WebAppInfo(url=webapp_url),
+            )
+        ],
+    ]
+    if show_unlimited and payment_url:
+        rows.append([InlineKeyboardButton(text=t.get("btn_unlimited", "Unlimited"), url=payment_url)])
+    rows.append([InlineKeyboardButton(text=t.get("btn_change_language", "Change language"), callback_data="show_language")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def limit_keyboard(support_url: str, payment_url: str | None, t: dict) -> InlineKeyboardMarkup:

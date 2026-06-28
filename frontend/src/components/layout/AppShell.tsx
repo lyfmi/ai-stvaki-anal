@@ -111,9 +111,7 @@ function DestinationView({
 }
 
 export function AppShell(ctx: AppContextProps) {
-  const { activeTab, currentRoute, push, pop, canGoBack } = useAppRouter();
-
-  const showTabBar = isRootRoute(currentRoute);
+  const { activeTab, currentRoute, push } = useAppRouter();
 
   const handleProfileNavigate = (target: "support" | "unlimited" | "admin") => {
     if (target === "support") push({ type: "support" });
@@ -161,16 +159,6 @@ export function AppShell(ctx: AppContextProps) {
           onProfileNavigate={handleProfileNavigate}
         />
       </div>
-
-      {canGoBack && !showTabBar && (
-        <button
-          type="button"
-          onClick={() => pop()}
-          className="mt-4 text-xs text-accent"
-        >
-          ← {ctx.t.result_back}
-        </button>
-      )}
     </>
   );
 }

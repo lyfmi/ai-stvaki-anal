@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
 import json
+import logging
 
 from duckduckgo_search import DDGS
 
 from app.core.config import settings
 from app.core.redis import get_redis
 from app.schemas import SearchPayload, SearchResultItem
+
+logger = logging.getLogger(__name__)
 
 
 class DuckDuckGoSearchProvider:
@@ -25,7 +28,7 @@ class DuckDuckGoSearchProvider:
                     )
             return items
 
-        return await asyncio.wait_for(asyncio.to_thread(_run), timeout=3.0)
+        return await asyncio.wait_for(asyncio.to_thread(_run), timeout=8.0)
 
 
 class SearXNGSearchProvider:
@@ -35,7 +38,7 @@ class SearXNGSearchProvider:
     async def search(self, query: str, max_results: int) -> list[SearchResultItem]:
         import httpx
 
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             response = await client.get(
                 f"{self.base_url}/search",
                 params={"q": query, "format": "json", "categories": "general"},
@@ -48,7 +51,7 @@ class SearXNGSearchProvider:
                     SearchResultItem(
                         query=query,
                         title=r.get("title", ""),
-                        snippet=r.get("content", ""),
+                        snippet=r.get("content", r.get("snippet", "")),
                         url=r.get("url", ""),
                     )
                 )
@@ -63,11 +66,29 @@ def _cache_key(query: str) -> str:
 
 class SearchEnricher:
     def __init__(self) -> None:
-        provider = settings.search_provider.lower()
-        if provider == "searxng":
-            self.provider = SearXNGSearchProvider(settings.searxng_base_url)
+        self.searxng = SearXNGSearchProvider(settings.searxng_base_url)
+        self.ddg = DuckDuckGoSearchProvider()
+        preferred = settings.search_provider.lower()
+        if preferred == "duckduckgo":
+            self.providers = [self.ddg, self.searxng]
         else:
-            self.provider = DuckDuckGoSearchProvider()
+            self.providers = [self.searxng, self.ddg]
+
+    async def _search_query(self, query: str, max_results: int) -> list[SearchResultItem]:
+        last_error: Exception | None = None
+        for provider in self.providers:
+            name = type(provider).__name__
+            try:
+                results = await provider.search(query, max_results)
+                if results:
+                    return results
+                logger.warning("Search provider %s returned no results for: %s", name, query)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Search provider %s failed for %s: %s", name, query, exc)
+        if last_error:
+            raise last_error
+        return []
 
     async def enrich(self, queries: list[str]) -> SearchPayload:
         queries = [q.strip() for q in queries if q.strip()][: settings.search_max_queries]
@@ -88,15 +109,19 @@ class SearchEnricher:
                 executed.append(query)
                 continue
             try:
-                results = await self.provider.search(query, settings.search_max_results)
-                await redis.setex(
-                    cache_key,
-                    settings.search_cache_ttl_seconds,
-                    json.dumps([r.model_dump() for r in results]),
-                )
-                all_results.extend(results)
-                executed.append(query)
-            except Exception:
+                results = await self._search_query(query, settings.search_max_results)
+                if results:
+                    await redis.setex(
+                        cache_key,
+                        settings.search_cache_ttl_seconds,
+                        json.dumps([r.model_dump() for r in results]),
+                    )
+                    all_results.extend(results)
+                    executed.append(query)
+                else:
+                    partial = True
+            except Exception as exc:
+                logger.error("All search providers failed for %s: %s", query, exc)
                 partial = True
 
         if not all_results:

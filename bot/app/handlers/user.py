@@ -1,5 +1,4 @@
-import httpx
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -17,7 +16,7 @@ from app.keyboards.inline import (
     subscription_keyboard,
 )
 from app.utils.affiliate import build_affiliate_url
-from app.utils.formatters import clear_translation_cache, format_analysis, get_t
+from app.utils.formatters import clear_translation_cache, get_t
 
 router = Router()
 backend = BackendClient()
@@ -86,10 +85,19 @@ async def show_funnel_step(
         return
 
     if state in ("ACTIVE", "UNLIMITED"):
+        payment_url = None
+        show_unlimited = state != "UNLIMITED"
+        if show_unlimited:
+            try:
+                payment = await backend.create_unlimited_payment(telegram_id)
+                payment_url = payment.get("webapp_payment_url") or payment.get("payment_url")
+            except Exception:
+                pass
+        webapp_url = settings.public_base_url.rstrip("/")
         await _send_step(
             message,
-            t.get("active", "Send screenshot"),
-            active_keyboard(app_settings.get("support_url", "https://t.me/support"), t),
+            t.get("active", "Open Mini App"),
+            active_keyboard(webapp_url, payment_url, t, show_unlimited=show_unlimited),
             edit=edit,
         )
         return
@@ -191,43 +199,28 @@ async def on_check_deposit(callback: CallbackQuery):
         await callback.answer(t.get("waiting_deposit", "Waiting..."), show_alert=True)
 
 
+@router.callback_query(F.data == "show_language")
+async def on_show_language(callback: CallbackQuery):
+    user = await backend.get_user(callback.from_user.id)
+    t = await get_t(user.get("language") or "ru")
+    await _send_step(
+        callback.message,
+        t.get("choose_language", "Choose language:"),
+        language_keyboard(),
+        edit=True,
+    )
+    await callback.answer()
+
+
 @router.message(F.photo)
-async def on_photo(message: Message, bot: Bot):
-    telegram_id = message.from_user.id
-    user = await backend.get_user(telegram_id)
-    locale = user.get("language") or "ru"
-    t = await get_t(locale)
-
-    status = await backend.get_status(telegram_id)
-    if not status.get("can_analyze") and telegram_id not in settings.admin_ids:
-        if not user.get("is_deposited"):
-            await message.answer(t.get("analysis_funnel", "Complete funnel"))
-            await show_funnel_step(message, telegram_id, user)
-        else:
-            await message.answer(t.get("analysis_limit", "Limit exceeded"))
-        return
-
-    await message.answer(t.get("analyzing", "Analyzing..."))
-    photo = message.photo[-1]
-    file = await bot.get_file(photo.file_id)
-    file_bytes = await bot.download_file(file.file_path)
-    content = file_bytes.read()
-
-    try:
-        result = await backend.analyze(telegram_id, content, "photo.jpg")
-        await message.answer(format_analysis(result, locale))
-    except httpx.HTTPStatusError as e:
-        detail = "Error"
-        try:
-            detail = e.response.json().get("detail", detail)
-        except Exception:
-            pass
-        if e.response.status_code == 403:
-            await message.answer(t.get("analysis_limit", detail))
-        elif e.response.status_code in (422, 500, 503):
-            await message.answer(t.get("analysis_error", detail))
-        else:
-            await message.answer(f"❌ {detail}")
+async def on_photo(message: Message):
+    user = await backend.get_user(message.from_user.id)
+    t = await get_t(user.get("language") or "ru")
+    webapp_url = settings.public_base_url.rstrip("/")
+    await message.answer(
+        t.get("webapp_only", "Open Mini App to analyze screenshots."),
+        reply_markup=active_keyboard(webapp_url, None, t, show_unlimited=False),
+    )
 
 
 @router.message(Command("admin"))

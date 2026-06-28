@@ -53,8 +53,7 @@ TRANSLATIONS = {
         "waiting_deposit": "⏳ Ожидаем postback депозита. Если уже пополнили — подождите 1–2 минуты.",
         "active": (
             "✅ <b>Доступ открыт!</b>\n\n"
-            "📸 Отправьте скриншот события из букмекерской конторы — AI проанализирует и даст рекомендацию.\n\n"
-            "💡 Также можно открыть Web App через кнопку меню внизу."
+            "📱 Откройте Mini App — загрузите скриншот события, AI проанализирует и даст рекомендацию."
         ),
         "limit_exceeded": (
             "⏳ <b>Дневной лимит исчерпан</b>\n\n"
@@ -62,13 +61,19 @@ TRANSLATIONS = {
             "Подождите до сброса или купите безлимит ♾"
         ),
         "btn_unlimited": "♾ Купить безлимит",
+        "btn_open_webapp": "📱 Открыть Mini App",
+        "btn_change_language": "🌍 Сменить язык",
+        "webapp_only": (
+            "📱 Анализ скриншотов доступен только в Mini App.\n\n"
+            "Нажмите кнопку ниже, чтобы открыть приложение."
+        ),
         "btn_support": "💬 Написать в поддержку",
         "analyzing": "🔍 Анализирую скриншот… Это займёт 10–20 секунд.",
         "analysis_error": "❌ Не удалось прочитать скриншот. Попробуйте другое фото с чёткими коэффициентами.",
         "analysis_limit": "❌ Лимит анализов исчерпан на сегодня.",
         "analysis_funnel": "❌ Сначала пройдите воронку: подписка → регистрация → депозит.",
         "registered_ok": "✅ Регистрация подтверждена!",
-        "deposit_ok": "✅ Депозит подтверждён! Отправьте скрин для анализа.",
+        "deposit_ok": "✅ Депозит подтверждён! Откройте Mini App для анализа.",
         "unlimited_ok": "♾ Безлимит активирован!",
         "admin_menu": "⚙️ Админ-панель",
         "admin_stats": "📊 Статистика",
@@ -123,8 +128,7 @@ TRANSLATIONS = {
         "waiting_deposit": "⏳ Waiting for deposit postback. If you already deposited — wait 1–2 minutes.",
         "active": (
             "✅ <b>Access granted!</b>\n\n"
-            "📸 Send an event screenshot from the bookmaker — AI will analyze it and give a recommendation.\n\n"
-            "💡 You can also open the Web App via the menu button."
+            "📱 Open the Mini App — upload an event screenshot and AI will analyze it and give a recommendation."
         ),
         "limit_exceeded": (
             "⏳ <b>Daily limit reached</b>\n\n"
@@ -132,13 +136,19 @@ TRANSLATIONS = {
             "Wait for reset or buy unlimited ♾"
         ),
         "btn_unlimited": "♾ Buy unlimited",
+        "btn_open_webapp": "📱 Open Mini App",
+        "btn_change_language": "🌍 Change language",
+        "webapp_only": (
+            "📱 Screenshot analysis is only available in the Mini App.\n\n"
+            "Tap the button below to open the app."
+        ),
         "btn_support": "💬 Contact support",
         "analyzing": "🔍 Analyzing screenshot… This takes 10–20 seconds.",
         "analysis_error": "❌ Could not read the screenshot. Try another photo with clear odds.",
         "analysis_limit": "❌ Daily analysis limit reached.",
         "analysis_funnel": "❌ Complete the funnel first: subscribe → register → deposit.",
         "registered_ok": "✅ Registration confirmed!",
-        "deposit_ok": "✅ Deposit confirmed! Send a screenshot for analysis.",
+        "deposit_ok": "✅ Deposit confirmed! Open the Mini App for analysis.",
         "unlimited_ok": "♾ Unlimited activated!",
         "admin_menu": "⚙️ Admin panel",
         "admin_stats": "📊 Stats",
