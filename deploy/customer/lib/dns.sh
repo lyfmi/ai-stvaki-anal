@@ -9,18 +9,18 @@ wait_for_dns() {
   local attempt=0
   local resolved=""
 
-  info "Ожидаем DNS A-запись для ${domain} → ${expected_ip} (до $(( max_attempts * sleep_sec / 60 )) мин.)"
+  info "Ожидаем привязку домена ${domain} к серверу ${expected_ip} (до $(( max_attempts * sleep_sec / 60 )) мин.)"
 
   while (( attempt < max_attempts )); do
     resolved="$(dig +short A "$domain" 2>/dev/null | grep -E '^[0-9.]+$' | tail -1 || true)"
     if [[ "$resolved" == "$expected_ip" ]]; then
-      ok "DNS готов: ${domain} → ${resolved}"
+      ok "Домен привязан: ${domain} → ${resolved}"
       return 0
     fi
     if [[ -n "$resolved" ]]; then
-      warn "Сейчас ${domain} → ${resolved}, ожидаем ${expected_ip} (попытка $((attempt + 1))/${max_attempts})"
+      warn "Сейчас ${domain} указывает на ${resolved}, нужен ${expected_ip} — ждём обновления DNS (попытка $((attempt + 1))/${max_attempts})"
     else
-      warn "Запись ещё не видна (попытка $((attempt + 1))/${max_attempts})"
+      warn "Домен пока не виден — проверьте A-запись в личном кабинете регистратора (попытка $((attempt + 1))/${max_attempts})"
     fi
     if [[ "$DRY_RUN" == "1" ]]; then
       ok "[dry-run] DNS check skipped"
@@ -30,5 +30,5 @@ wait_for_dns() {
     ((attempt++))
   done
 
-  fail "DNS не обновился за отведённое время. Проверьте A-запись у регистратора."
+  fail "Домен не привязался за 15 минут. Проверьте A-запись в личном кабинете домена (Reg.ru, Timeweb и т.п.) и запустите скрипт снова."
 }

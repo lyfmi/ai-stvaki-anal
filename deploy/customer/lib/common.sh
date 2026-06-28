@@ -44,7 +44,7 @@ require_ubuntu_2404() {
   source /etc/os-release
   if [[ "${ID:-}" != "ubuntu" ]] || [[ "${VERSION_ID:-}" != "24.04" ]]; then
     warn "Ожидается Ubuntu 24.04, обнаружено: ${PRETTY_NAME:-unknown}"
-    read -r -p "Продолжить всё равно? [y/N]: " ans
+    read -r -p "Продолжить всё равно? (y — да, n — выйти) [y/N]: " ans
     [[ "${ans,,}" == "y" ]] || fail "Установка прервана."
   fi
 }
@@ -69,7 +69,7 @@ prompt_required() {
     read -r -p "$prompt_text: " value
     value="$(echo "$value" | xargs)"
     if [[ -z "$value" ]]; then
-      echo "Поле обязательно." >&2
+      echo "Это поле обязательно — введите значение (подсказка в скобках выше)." >&2
     fi
   done
   printf -v "$var_name" '%s' "$value"
@@ -84,7 +84,7 @@ prompt_optional() {
     read -r -p "$prompt_text [$default]: " value
     value="${value:-$default}"
   else
-    read -r -p "$prompt_text (Enter — пропустить): " value
+    read -r -p "$prompt_text (Enter — пропустить, если не знаете): " value
   fi
   printf -v "$var_name" '%s' "$(echo "$value" | xargs)"
 }
