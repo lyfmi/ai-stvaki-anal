@@ -1,5 +1,6 @@
 import httpx
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 
@@ -16,33 +17,56 @@ from app.keyboards.inline import (
     subscription_keyboard,
 )
 from app.utils.affiliate import build_affiliate_url
-from app.utils.formatters import format_analysis, get_t
+from app.utils.formatters import clear_translation_cache, format_analysis, get_t
 
 router = Router()
 backend = BackendClient()
 
 
-async def show_funnel_step(message: Message, telegram_id: int, user: dict | None = None):
+async def _send_step(message: Message, text: str, reply_markup, *, edit: bool = False) -> None:
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=reply_markup)
+            return
+        except TelegramBadRequest:
+            pass
+    await message.answer(text, reply_markup=reply_markup)
+
+
+async def show_funnel_step(
+    message: Message,
+    telegram_id: int,
+    user: dict | None = None,
+    *,
+    edit: bool = False,
+):
     if user is None:
         user = await backend.get_user(telegram_id)
-    locale = user.get("language", "ru")
+    locale = user.get("language") or "ru"
     t = await get_t(locale)
     app_settings = await backend.get_settings()
     state = user.get("funnel_state", "NEW")
 
     if state == "NEW":
-        await message.answer(t.get("welcome", "Welcome"), reply_markup=language_keyboard())
+        await _send_step(message, t.get("welcome", "Welcome"), language_keyboard(), edit=edit)
         return
 
     if state == "LANGUAGE_SELECTED":
-        await message.answer(
+        await _send_step(
+            message,
             t.get("subscribe_channel", "Subscribe"),
-            reply_markup=subscription_keyboard(app_settings.get("channel_url", "https://t.me/example"), t),
+            subscription_keyboard(app_settings.get("channel_url", "https://t.me/example"), t),
+            edit=edit,
         )
         return
 
     if state in ("CHANNEL_SUBSCRIBED", "REGISTRATION_PENDING"):
-        await message.answer(t.get("get_signal", "Get signal"), reply_markup=get_signal_keyboard(t))
+        await _send_step(
+            message,
+            t.get("get_signal", "Get signal"),
+            get_signal_keyboard(t),
+            edit=edit,
+        )
         return
 
     if state in ("REGISTERED", "DEPOSIT_PENDING"):
@@ -52,18 +76,21 @@ async def show_funnel_step(message: Message, telegram_id: int, user: dict | None
             app_settings.get("affiliate_sub_param", "sub1"),
             telegram_id,
         )
-        text = t.get("registration", "Register").format(promo_code=promo)
         if state == "DEPOSIT_PENDING":
             text = t.get("deposit", "Deposit")
-            await message.answer(text, reply_markup=deposit_keyboard(ref_url, t))
+            keyboard = deposit_keyboard(ref_url, t)
         else:
-            await message.answer(text, reply_markup=registration_keyboard(ref_url, t))
+            text = t.get("registration", "Register").format(promo_code=promo)
+            keyboard = registration_keyboard(ref_url, t)
+        await _send_step(message, text, keyboard, edit=edit)
         return
 
     if state in ("ACTIVE", "UNLIMITED"):
-        await message.answer(
+        await _send_step(
+            message,
             t.get("active", "Send screenshot"),
-            reply_markup=active_keyboard(app_settings.get("support_url", "https://t.me/support"), t),
+            active_keyboard(app_settings.get("support_url", "https://t.me/support"), t),
+            edit=edit,
         )
         return
 
@@ -74,44 +101,50 @@ async def show_funnel_step(message: Message, telegram_id: int, user: dict | None
             payment_url = payment.get("webapp_payment_url") or payment.get("payment_url")
         except Exception:
             pass
-        await message.answer(
+        await _send_step(
+            message,
             t.get("limit_exceeded", "Limit exceeded"),
-            reply_markup=limit_keyboard(
+            limit_keyboard(
                 app_settings.get("support_url", "https://t.me/support"),
                 payment_url,
                 t,
             ),
+            edit=edit,
         )
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     user = await backend.get_user(message.from_user.id)
-    if message.from_user.username:
-        pass
     await show_funnel_step(message, message.from_user.id, user)
 
 
 @router.callback_query(F.data.startswith("lang:"))
 async def on_language(callback: CallbackQuery):
     lang = callback.data.split(":")[1]
+    clear_translation_cache(lang)
     user = await backend.set_language(callback.from_user.id, lang)
+    await get_t(lang, force=True)
     await callback.answer()
-    await show_funnel_step(callback.message, callback.from_user.id, user)
+    await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
 
 
 @router.callback_query(F.data == "check_sub")
 async def on_check_sub(callback: CallbackQuery):
+    prev_state = (await backend.get_user(callback.from_user.id)).get("funnel_state")
     user = await backend.check_subscription(callback.from_user.id)
-    t = await get_t(user.get("language", "ru"))
-    await callback.answer(t.get("btn_check_sub", "OK"))
-    await show_funnel_step(callback.message, callback.from_user.id, user)
+    t = await get_t(user.get("language") or "ru")
+    if user.get("funnel_state") != prev_state:
+        await callback.answer(t.get("sub_check_ok", "OK"))
+        await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
+    else:
+        await callback.answer(t.get("sub_not_joined", "Not subscribed"), show_alert=True)
 
 
 @router.callback_query(F.data == "get_signal")
 async def on_get_signal(callback: CallbackQuery):
     user = await backend.get_user(callback.from_user.id)
-    t = await get_t(user.get("language", "ru"))
+    t = await get_t(user.get("language") or "ru")
     app_settings = await backend.get_settings()
     promo = app_settings.get("affiliate_promo_code", "")
     ref_url = build_affiliate_url(
@@ -127,30 +160,30 @@ async def on_get_signal(callback: CallbackQuery):
 @router.callback_query(F.data == "check_reg")
 async def on_check_reg(callback: CallbackQuery):
     user = await backend.get_user(callback.from_user.id)
-    t = await get_t(user.get("language", "ru"))
+    t = await get_t(user.get("language") or "ru")
     if user.get("is_registered"):
         await callback.answer(t.get("registered_ok", "OK"))
-        await show_funnel_step(callback.message, callback.from_user.id, user)
+        await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
     else:
-        await callback.answer("⏳ Ожидаем postback регистрации...", show_alert=True)
+        await callback.answer(t.get("waiting_registration", "Waiting..."), show_alert=True)
 
 
 @router.callback_query(F.data == "check_deposit")
 async def on_check_deposit(callback: CallbackQuery):
     user = await backend.get_user(callback.from_user.id)
-    t = await get_t(user.get("language", "ru"))
+    t = await get_t(user.get("language") or "ru")
     if user.get("is_deposited"):
         await callback.answer(t.get("deposit_ok", "OK"))
-        await show_funnel_step(callback.message, callback.from_user.id, user)
+        await show_funnel_step(callback.message, callback.from_user.id, user, edit=True)
     else:
-        await callback.answer("⏳ Ожидаем postback депозита...", show_alert=True)
+        await callback.answer(t.get("waiting_deposit", "Waiting..."), show_alert=True)
 
 
 @router.message(F.photo)
 async def on_photo(message: Message, bot: Bot):
     telegram_id = message.from_user.id
     user = await backend.get_user(telegram_id)
-    locale = user.get("language", "ru")
+    locale = user.get("language") or "ru"
     t = await get_t(locale)
 
     status = await backend.get_status(telegram_id)
@@ -200,11 +233,11 @@ async def admin_stats(callback: CallbackQuery):
     stats = await backend.admin_stats(callback.from_user.id)
     text = (
         f"📊 Статистика\n\n"
-        f"Пользователей: {stats['total_users']}\n"
-        f"Регистраций: {stats['registered_users']}\n"
-        f"Депозитов: {stats['deposited_users']}\n"
-        f"Безлимит: {stats['unlimited_users']}\n"
-        f"Анализов: {stats['total_analyses']} (сегодня: {stats['analyses_today']})"
+        f"👥 Пользователей: {stats['total_users']}\n"
+        f"📝 Регистраций: {stats['registered_users']}\n"
+        f"💰 Депозитов: {stats['deposited_users']}\n"
+        f"♾ Безлимит: {stats['unlimited_users']}\n"
+        f"🔍 Анализов: {stats['total_analyses']} (сегодня: {stats['analyses_today']})"
     )
     await callback.message.answer(text)
     await callback.answer()

@@ -16,6 +16,7 @@ from app.services.analysis import AnalysisService
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
 from app.services.settings import SettingsService
+from app.services.telegram_bot import is_channel_member
 from app.services.tribute import TributeService
 
 router = APIRouter(prefix="/api/user", tags=["user"])
@@ -64,6 +65,8 @@ async def check_subscription(user=Depends(_get_user), db: AsyncSession = Depends
     settings_svc = SettingsService(db)
     channel_id = await settings_svc.get("channel_id")
     if not channel_id:
+        return await funnel.mark_channel_subscribed(user)
+    if await is_channel_member(channel_id, user.telegram_id):
         return await funnel.mark_channel_subscribed(user)
     return user
 
