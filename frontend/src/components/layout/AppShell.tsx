@@ -144,7 +144,7 @@ export function AppShell(ctx: AppContextProps) {
         <button
           type="button"
           onClick={ctx.onMockLogin}
-          className="magnetic-btn w-full bg-accent text-appBg py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
         >
           <Zap className="w-4 h-4" /> Start
         </button>

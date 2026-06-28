@@ -36,7 +36,7 @@ export function StepPills({ t, activeStep = null }: StepPillProps) {
                 <div
                   className={`w-9 h-9 rounded-full border flex items-center justify-center transition-all duration-300 ${
                     active
-                      ? "border-accent bg-accent/10 shadow-[0_0_12px_#00FF9D33]"
+                      ? "border-accent bg-accent/10 shadow-accent"
                       : done
                         ? "border-accent/50 bg-accent/5"
                         : "border-borderSubtle bg-surface"

@@ -11,7 +11,7 @@ export function PrimaryButton({ loading, children, className = "", disabled, ...
     <button
       {...props}
       disabled={disabled || loading}
-      className={`magnetic-btn w-full bg-accent text-appBg font-semibold py-4 rounded-container flex items-center justify-center gap-2 ${className}`}
+      className={`magnetic-btn w-full bg-accent text-white font-semibold py-4 rounded-container flex items-center justify-center gap-2 ${className}`}
     >
       {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : children}
     </button>

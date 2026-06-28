@@ -137,7 +137,7 @@ function AdminBroadcastTab({ apiCall }: { apiCall: any }) {
         <button
           onClick={handleBroadcast}
           disabled={loading || !text.trim()}
-          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />}
           Запустить рассылку
@@ -200,7 +200,7 @@ function AdminAffiliateTab({ apiCall }: { apiCall: any }) {
         <button 
           onClick={handleUpdate}
           disabled={loading || !refUrl || !promoCode}
-          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LinkIcon className="w-4 h-4" />}
           Сохранить параметры
@@ -256,7 +256,7 @@ function AdminUnlimitedTab({ apiCall }: { apiCall: any }) {
           <button 
             onClick={() => handleAction("grant")}
             disabled={loading || !tgId}
-            className="flex-1 py-3 bg-accent text-appBg font-bold rounded-xl flex items-center justify-center gap-1.5"
+            className="flex-1 py-3 bg-accent text-white font-bold rounded-xl flex items-center justify-center gap-1.5"
           >
             Выдать Безлимит
           </button>
@@ -354,7 +354,7 @@ function AdminSettingsTab({ apiCall }: { apiCall: any }) {
         <button 
           onClick={handleUpdate}
           disabled={loading}
-          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <SettingsIcon className="w-4 h-4" />}
           Сохранить настройки
@@ -515,7 +515,7 @@ function AdminAdminsTab({ apiCall }: { apiCall: any }) {
         <button
           onClick={handleAdd}
           disabled={loading || (!username.trim() && !tgId.trim())}
-          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
           Добавить админа
@@ -705,7 +705,7 @@ function AdminTributeTab({ apiCall }: { apiCall: any }) {
         <button
           onClick={handleUpdate}
           disabled={loading}
-          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+          className="magnetic-btn w-full bg-accent text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <SettingsIcon className="w-4 h-4" />}
           Сохранить Tribute
@@ -739,7 +739,7 @@ export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
             onClick={() => setSubTab(tab)}
             className={`text-xxs font-medium px-3 py-2 rounded-lg border transition-all uppercase ${
               subTab === tab
-                ? "bg-accent text-appBg border-accent"
+                ? "bg-accent text-white border-accent"
                 : "border-borderSubtle text-textMuted"
             }`}
           >

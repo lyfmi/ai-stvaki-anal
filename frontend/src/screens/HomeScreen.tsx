@@ -150,7 +150,7 @@ export function HomeScreen({
             type="button"
             onClick={handlePurchase}
             disabled={purchaseLoading}
-            className="magnetic-btn w-full bg-accent text-appBg font-semibold py-3 rounded-xl flex items-center justify-center gap-2 text-sm"
+            className="magnetic-btn w-full bg-accent text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 text-sm"
           >
             {purchaseLoading ? (
               t.loading

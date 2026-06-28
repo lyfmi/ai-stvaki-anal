@@ -4,14 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        appBg: "#0A0A0A",
-        surface: "#111111",
-        surfaceElevated: "#161616",
-        borderSubtle: "#1F1F1F",
-        accent: "#00FF9D",
-        accentMuted: "#00FF9D33",
-        textPrimary: "#F5F5F5",
-        textMuted: "#737373",
+        // 1win dark palette — https://1win.design/palette
+        // Brand Blue (Hue 212), Deep Blue surfaces, Outline Black bg, White text
+        appBg: "#000000",
+        surface: "#0C1424",
+        surfaceElevated: "#111D33",
+        borderSubtle: "#1A2D4F",
+        accent: "#0075FF",
+        accentHover: "#3391FF",
+        accentMuted: "#0075FF33",
+        brandDeep: "#062654",
+        textPrimary: "#FFFFFF",
+        textMuted: "#7B8FA8",
         danger: "#FF453A",
       },
       fontFamily: {
@@ -23,6 +27,9 @@ export default {
       },
       fontSize: {
         xxs: "0.625rem",
+      },
+      boxShadow: {
+        accent: "0 0 12px #0075FF33",
       },
     },
   },
