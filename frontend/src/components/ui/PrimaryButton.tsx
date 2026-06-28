@@ -7,11 +7,16 @@ interface PrimaryButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function PrimaryButton({ loading, children, className = "", disabled, ...props }: PrimaryButtonProps) {
+  const isInactive = disabled || loading;
   return (
     <button
       {...props}
-      disabled={disabled || loading}
-      className={`magnetic-btn w-full bg-accent text-white font-semibold py-4 rounded-container flex items-center justify-center gap-2 ${className}`}
+      disabled={isInactive}
+      className={`magnetic-btn w-full font-semibold py-4 rounded-container flex items-center justify-center gap-2 disabled:opacity-100 ${
+        isInactive
+          ? "bg-surfaceElevated text-textMuted border border-borderSubtle cursor-not-allowed"
+          : "bg-accent text-white"
+      } ${className}`}
     >
       {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : children}
     </button>

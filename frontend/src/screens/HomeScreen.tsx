@@ -38,12 +38,14 @@ export function HomeScreen({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
+  const statusReady = Boolean(statusInfo);
   const isUnlimited =
     statusInfo?.user?.has_unlimited || statusInfo?.user?.funnel_state === "UNLIMITED";
   const remaining = statusInfo?.attempts_remaining ?? 0;
   const dailyLimit = statusInfo?.daily_limit ?? 10;
-  const limitReached = hasFullAccess && !isUnlimited && remaining <= 0;
-  const canAnalyze = hasFullAccess && statusInfo?.can_analyze && !limitReached;
+  const limitReached = statusReady && hasFullAccess && !isUnlimited && remaining <= 0;
+  const canAnalyze = statusReady && hasFullAccess && Boolean(statusInfo?.can_analyze) && !limitReached;
+  const uploadDisabled = !hasFullAccess || limitReached;
 
   useEffect(() => {
     if (hasFullAccess) {
@@ -59,6 +61,7 @@ export function HomeScreen({
         stagger: 0.06,
         duration: 0.5,
         ease: "power3.out",
+        clearProps: "opacity,transform",
       });
     }, containerRef);
     return () => ctx.revert();
@@ -181,14 +184,16 @@ export function HomeScreen({
       ) : (
         <>
           <div
-            className={`home-fade border border-dashed rounded-containerLg p-6 flex flex-col items-center justify-center min-h-[220px] gap-4 transition-all duration-300 ${
-              !hasFullAccess || limitReached
+            className={`home-fade border border-dashed rounded-containerLg p-6 flex flex-col items-center justify-center min-h-[220px] gap-4 transition-colors duration-300 ${
+              !hasFullAccess
                 ? "opacity-40 pointer-events-none border-borderSubtle bg-surface"
-                : isDragging
-                  ? "border-accent bg-accent/5"
-                  : previewUrl
-                    ? "border-borderSubtle bg-surface"
-                    : "border-borderSubtle bg-surface hover:border-accent/30"
+                : uploadDisabled
+                  ? "pointer-events-none border-borderSubtle bg-surface opacity-100"
+                  : isDragging
+                    ? "border-accent bg-accent/5"
+                    : previewUrl
+                      ? "border-borderSubtle bg-surface"
+                      : "border-borderSubtle bg-surface hover:border-accent/30"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
