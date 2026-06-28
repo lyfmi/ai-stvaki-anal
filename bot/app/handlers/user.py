@@ -15,6 +15,7 @@ from app.keyboards.inline import (
     registration_keyboard,
     subscription_keyboard,
 )
+from app.utils.affiliate import build_affiliate_url
 from app.utils.formatters import format_analysis, get_t
 
 router = Router()
@@ -46,12 +47,11 @@ async def show_funnel_step(message: Message, telegram_id: int, user: dict | None
 
     if state in ("REGISTERED", "DEPOSIT_PENDING"):
         promo = app_settings.get("affiliate_promo_code", "")
-        ref_url = app_settings.get("affiliate_ref_url", "https://example.com")
-        if "{telegram_id}" in ref_url:
-            ref_url = ref_url.replace("{telegram_id}", str(telegram_id))
-        sub_param = app_settings.get("affiliate_sub_param", "sub1")
-        if sub_param not in ref_url and "?" not in ref_url:
-            ref_url = f"{ref_url}?{sub_param}={telegram_id}"
+        ref_url = build_affiliate_url(
+            app_settings.get("affiliate_ref_url", "https://example.com"),
+            app_settings.get("affiliate_sub_param", "sub1"),
+            telegram_id,
+        )
         text = t.get("registration", "Register").format(promo_code=promo)
         if state == "DEPOSIT_PENDING":
             text = t.get("deposit", "Deposit")
@@ -114,10 +114,11 @@ async def on_get_signal(callback: CallbackQuery):
     t = await get_t(user.get("language", "ru"))
     app_settings = await backend.get_settings()
     promo = app_settings.get("affiliate_promo_code", "")
-    ref_url = app_settings.get("affiliate_ref_url", "https://example.com")
-    sub_param = app_settings.get("affiliate_sub_param", "sub1")
-    if sub_param not in ref_url:
-        ref_url = f"{ref_url}?{sub_param}={callback.from_user.id}"
+    ref_url = build_affiliate_url(
+        app_settings.get("affiliate_ref_url", "https://example.com"),
+        app_settings.get("affiliate_sub_param", "sub1"),
+        callback.from_user.id,
+    )
     text = t.get("registration", "Register").format(promo_code=promo)
     await callback.message.edit_text(text, reply_markup=registration_keyboard(ref_url, t))
     await callback.answer()
