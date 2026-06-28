@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import PostbackEvent, User
+from app.services.admin import AdminService
 from app.services.funnel import FunnelService
 
 
@@ -14,6 +15,10 @@ class PostbackService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.funnel = FunnelService(db)
+        self.admins = AdminService(db)
+
+    async def _is_admin(self, telegram_id: int) -> bool:
+        return await self.admins.is_admin(telegram_id)
 
     @staticmethod
     def _payload_hash(event_type: str, telegram_id: int, payload: dict) -> str:
@@ -30,7 +35,7 @@ class PostbackService:
             result = await self.db.execute(select(User).where(User.telegram_id == telegram_id))
             return result.scalar_one_or_none(), False
 
-        admin_bypass = telegram_id in settings.admin_ids
+        admin_bypass = await self._is_admin(telegram_id)
         user = await self.funnel.get_or_create(telegram_id)
         await self.funnel.mark_registered(user, admin_bypass=admin_bypass)
         if admin_bypass and not user.is_deposited:
@@ -53,7 +58,7 @@ class PostbackService:
             result = await self.db.execute(select(User).where(User.telegram_id == telegram_id))
             return result.scalar_one_or_none(), False
 
-        admin_bypass = telegram_id in settings.admin_ids
+        admin_bypass = await self._is_admin(telegram_id)
         user = await self.funnel.get_or_create(telegram_id)
         if not user.is_registered:
             await self.funnel.mark_registered(user, admin_bypass=admin_bypass)

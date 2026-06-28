@@ -1,5 +1,4 @@
 import { ChevronRight, Crown, HelpCircle, Languages, Settings, User as UserIcon } from "lucide-react";
-import { ADMIN_TELEGRAM_ID } from "../constants";
 import type { Translations, Lang } from "../i18n";
 
 interface ProfileScreenProps {
@@ -14,7 +13,7 @@ export function ProfileScreen({ user, lang, t, onLangChange, onNavigate }: Profi
   if (!user) return null;
 
   const isUnlimited = user.has_unlimited || user.funnel_state === "UNLIMITED";
-  const isAdmin = user.telegram_id === ADMIN_TELEGRAM_ID;
+  const isAdmin = Boolean(user.is_admin);
 
   const links = [
     { key: "support" as const, icon: HelpCircle, label: t.profile_support },

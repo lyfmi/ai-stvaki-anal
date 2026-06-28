@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import { Copy, Link as LinkIcon, Megaphone, RefreshCw, Settings as SettingsIcon } from "lucide-react";
-import { ADMIN_TELEGRAM_ID } from "../constants";
+import { Copy, Link as LinkIcon, Megaphone, RefreshCw, Settings as SettingsIcon, Shield, Trash2, UserPlus } from "lucide-react";
 
 interface AdminHubProps {
   user: any;
@@ -410,12 +409,152 @@ function AdminPostbackTab({ apiCall }: { apiCall: any }) {
   );
 }
 
+// Admins management Subtab
+function AdminAdminsTab({ apiCall }: { apiCall: any }) {
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [username, setUsername] = useState("");
+  const [tgId, setTgId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const loadAdmins = async () => {
+    try {
+      const data = await apiCall("/admin/admins");
+      setAdmins(data);
+    } catch (e) {
+      console.error("Failed to load admins", e);
+    }
+  };
+
+  useEffect(() => {
+    loadAdmins();
+  }, []);
+
+  const handleAdd = async () => {
+    if (!username.trim() && !tgId.trim()) return;
+    try {
+      setLoading(true);
+      setMsg("");
+      const body: Record<string, unknown> = {};
+      if (tgId.trim()) body.telegram_id = parseInt(tgId);
+      if (username.trim()) body.username = username.trim();
+      await apiCall("/admin/admins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      setMsg("Админ добавлен");
+      setUsername("");
+      setTgId("");
+      await loadAdmins();
+    } catch (e: any) {
+      setMsg(`Ошибка: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemove = async (telegramId: number) => {
+    if (!confirm(`Удалить админа ${telegramId}?`)) return;
+    try {
+      setLoading(true);
+      setMsg("");
+      await apiCall("/admin/admins", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telegram_id: telegramId }),
+      });
+      setMsg("Админ удалён");
+      await loadAdmins();
+    } catch (e: any) {
+      setMsg(`Ошибка: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4 font-mono text-xs">
+      <h3 className="font-bold text-textPrimary text-sm uppercase">Управление админами</h3>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Username (@user):</span>
+          <input
+            type="text"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="@username"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">или Telegram ID:</span>
+          <input
+            type="number"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={tgId}
+            onChange={(e) => setTgId(e.target.value)}
+            placeholder="1396107626"
+          />
+        </div>
+
+        {msg && <div className="text-accent font-bold">{msg}</div>}
+
+        <button
+          onClick={handleAdd}
+          disabled={loading || (!username.trim() && !tgId.trim())}
+          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+        >
+          {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+          Добавить админа
+        </button>
+      </div>
+
+      <div className="h-px bg-borderSubtle/40" />
+
+      <div className="flex flex-col gap-2">
+        {admins.length === 0 && <div className="text-textMuted">Нет админов</div>}
+        {admins.map((admin) => (
+          <div
+            key={admin.telegram_id}
+            className="flex items-center justify-between p-3 bg-appBg border border-borderSubtle/40 rounded-xl"
+          >
+            <div className="flex flex-col min-w-0">
+              <span className="text-textPrimary font-bold">
+                {admin.username ? `@${admin.username}` : admin.telegram_id}
+              </span>
+              <span className="text-[10px] text-textMuted">
+                ID: {admin.telegram_id} · {admin.source === "env" ? "bootstrap" : "panel"}
+              </span>
+            </div>
+            {admin.removable ? (
+              <button
+                type="button"
+                onClick={() => handleRemove(admin.telegram_id)}
+                disabled={loading}
+                className="p-2 text-danger hover:bg-danger/10 rounded-lg shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            ) : (
+              <span title="Bootstrap admin" className="shrink-0">
+                <Shield className="w-4 h-4 text-accent" />
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
   const [subTab, setSubTab] = useState<
-    "stats" | "broadcast" | "affiliate" | "unlimited" | "settings" | "postback"
+    "stats" | "broadcast" | "affiliate" | "unlimited" | "settings" | "postback" | "admins"
   >("stats");
 
-  if (!user || user.telegram_id !== ADMIN_TELEGRAM_ID) {
+  if (!user?.is_admin) {
     return <div className="text-center py-10 text-sm text-danger">Forbidden</div>;
   }
 
@@ -427,7 +566,7 @@ export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(["stats", "broadcast", "affiliate", "unlimited", "settings", "postback"] as const).map((tab) => (
+        {(["stats", "broadcast", "affiliate", "unlimited", "settings", "postback", "admins"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -450,6 +589,7 @@ export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
         {subTab === "unlimited" && <AdminUnlimitedTab apiCall={apiCall} />}
         {subTab === "settings" && <AdminSettingsTab apiCall={apiCall} />}
         {subTab === "postback" && <AdminPostbackTab apiCall={apiCall} />}
+        {subTab === "admins" && <AdminAdminsTab apiCall={apiCall} />}
       </div>
     </div>
   );

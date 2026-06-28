@@ -56,8 +56,11 @@ async def require_internal_auth(
 
 async def require_admin(
     telegram_id: int = Depends(require_internal_auth),
+    db: AsyncSession = Depends(get_db),
 ) -> int:
-    if telegram_id not in settings.admin_ids:
+    from app.services.admin import AdminService
+
+    if not await AdminService(db).is_admin(telegram_id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     return telegram_id
 

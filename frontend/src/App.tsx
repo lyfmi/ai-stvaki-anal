@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppRouterProvider, useAppRouter } from "./router/AppRouter";
 import { AppLayout } from "./components/layout/AppShell";
 import { apiCall as apiRequest, authenticateTelegram } from "./api";
-import { ADMIN_TELEGRAM_ID } from "./constants";
 import { i18n, type Lang } from "./i18n";
 
 function AppContent() {
@@ -22,7 +21,7 @@ function AppContent() {
   const t = i18n[lang];
   const hasFullAccess = Boolean(
     user &&
-      (user.telegram_id === ADMIN_TELEGRAM_ID ||
+      (user.is_admin ||
         user.is_deposited ||
         user.has_unlimited ||
         ["ACTIVE", "UNLIMITED", "LIMIT_EXCEEDED"].includes(user.funnel_state))

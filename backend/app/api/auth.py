@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import verify_telegram_init_data
-from app.schemas import AuthTelegramRequest, AuthTelegramResponse, UserOut
+from app.schemas import AuthTelegramRequest, AuthTelegramResponse
+from app.services.admin import AdminService
 from app.services.funnel import FunnelService
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -22,4 +23,4 @@ async def auth_telegram(body: AuthTelegramRequest, db: AsyncSession = Depends(ge
     funnel = FunnelService(db)
     user = await funnel.get_or_create(telegram_id, username=user_data.get("username"))
     token = f"stub-jwt-{telegram_id}"
-    return AuthTelegramResponse(token=token, user=UserOut.model_validate(user))
+    return AuthTelegramResponse(token=token, user=await AdminService(db).enrich_user(user))

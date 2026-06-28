@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_internal_auth
 from app.schemas import (
@@ -12,6 +11,7 @@ from app.schemas import (
     UserOut,
     UserStatusOut,
 )
+from app.services.admin import AdminService
 from app.services.analysis import AnalysisService
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
@@ -33,20 +33,23 @@ async def _get_user(
 
 
 @router.get("/me", response_model=UserOut)
-async def get_me(user=Depends(_get_user)):
-    return user
+async def get_me(user=Depends(_get_user), db: AsyncSession = Depends(get_db)):
+    return await AdminService(db).enrich_user(user)
 
 
 @router.get("/status", response_model=UserStatusOut)
 async def get_status(user=Depends(_get_user), db: AsyncSession = Depends(get_db)):
     limits = AttemptsLimitService(db)
     funnel = FunnelService(db)
+    admin_svc = AdminService(db)
     can_analyze_limit, remaining, reset_at = await limits.can_analyze(user)
-    can_funnel = funnel.can_analyze_funnel(user, user.telegram_id)
+    can_funnel = await funnel.can_analyze_funnel(user, user.telegram_id)
+    is_admin = await admin_svc.is_admin(user.telegram_id)
     daily_limit = await limits.get_daily_limit()
+    enriched = await admin_svc.enrich_user(user)
     return UserStatusOut(
-        user=user,
-        can_analyze=can_funnel and (can_analyze_limit or user.telegram_id in settings.admin_ids),
+        user=enriched,
+        can_analyze=can_funnel and (can_analyze_limit or is_admin),
         attempts_remaining=remaining if not user.has_unlimited else 999999,
         attempts_reset_at=reset_at,
         daily_limit=daily_limit,
@@ -56,7 +59,8 @@ async def get_status(user=Depends(_get_user), db: AsyncSession = Depends(get_db)
 @router.post("/language", response_model=UserOut)
 async def set_language(body: LanguageUpdate, user=Depends(_get_user), db: AsyncSession = Depends(get_db)):
     funnel = FunnelService(db)
-    return await funnel.set_language(user, body.language)
+    updated = await funnel.set_language(user, body.language)
+    return await AdminService(db).enrich_user(updated)
 
 
 @router.post("/check-subscription", response_model=UserOut)
@@ -65,10 +69,12 @@ async def check_subscription(user=Depends(_get_user), db: AsyncSession = Depends
     settings_svc = SettingsService(db)
     channel_id = await settings_svc.get("channel_id")
     if not channel_id:
-        return await funnel.mark_channel_subscribed(user)
+        updated = await funnel.mark_channel_subscribed(user)
+        return await AdminService(db).enrich_user(updated)
     if await is_channel_member(channel_id, user.telegram_id):
-        return await funnel.mark_channel_subscribed(user)
-    return user
+        updated = await funnel.mark_channel_subscribed(user)
+        return await AdminService(db).enrich_user(updated)
+    return await AdminService(db).enrich_user(user)
 
 
 @router.post("/analyze", response_model=AnalysisOut)

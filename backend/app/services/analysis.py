@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import AiAnalysis, User
+from app.services.admin import AdminService
 from app.services.ai.pipeline import AiAnalysisPipeline, UnreadableScreenshotError
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
@@ -22,11 +23,13 @@ class AnalysisService:
     async def analyze(
         self, user: User, image_bytes: bytes, filename: str, telegram_id: int
     ) -> AiAnalysis:
-        if not self.funnel.can_analyze_funnel(user, telegram_id):
+        if not await self.funnel.can_analyze_funnel(user, telegram_id):
             raise PermissionError("Funnel not completed")
 
+        admin_svc = AdminService(self.db)
+        is_admin = await admin_svc.is_admin(telegram_id)
         can, remaining, _ = await self.limits.can_analyze(user)
-        if not can and telegram_id not in settings.admin_ids:
+        if not can and not is_admin:
             raise PermissionError("Daily limit exceeded")
 
         storage_dir = Path(settings.storage_path) / "screenshots"
@@ -67,7 +70,7 @@ class AnalysisService:
         )
         self.db.add(analysis)
 
-        if telegram_id not in settings.admin_ids:
+        if not is_admin:
             await self.limits.consume_attempt(user)
             if user.has_unlimited:
                 user.funnel_state = "UNLIMITED"

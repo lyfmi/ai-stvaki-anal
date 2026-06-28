@@ -14,6 +14,7 @@ class UserOut(BaseModel):
     is_registered: bool
     is_deposited: bool
     has_unlimited: bool
+    is_admin: bool = False
     attempts_count: int
     attempts_window_start: datetime | None
     created_at: datetime
@@ -103,6 +104,22 @@ class AdminStatsOut(BaseModel):
     unlimited_users: int
     total_analyses: int
     analyses_today: int
+
+
+class AdminOut(BaseModel):
+    telegram_id: int
+    username: str | None = None
+    removable: bool
+    source: str
+
+
+class AdminAdd(BaseModel):
+    telegram_id: int | None = None
+    username: str | None = None
+
+
+class AdminRemove(BaseModel):
+    telegram_id: int
 
 
 class SettingsUpdate(BaseModel):

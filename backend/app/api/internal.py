@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_internal_auth, require_internal_service
 from app.schemas import NotifyRequest, UserOut
+from app.services.admin import AdminService
 from app.services.funnel import FunnelService
 from app.services.settings import SettingsService
 from app.services.translations import TranslationService
@@ -18,7 +19,8 @@ async def get_user(
     db: AsyncSession = Depends(get_db),
 ):
     funnel = FunnelService(db)
-    return await funnel.get_or_create(telegram_id)
+    user = await funnel.get_or_create(telegram_id)
+    return await AdminService(db).enrich_user(user)
 
 
 @router.get("/settings")

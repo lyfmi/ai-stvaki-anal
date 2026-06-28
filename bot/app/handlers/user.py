@@ -22,6 +22,16 @@ router = Router()
 backend = BackendClient()
 
 
+async def _is_admin(telegram_id: int) -> bool:
+    if telegram_id in settings.admin_ids:
+        return True
+    try:
+        user = await backend.get_user(telegram_id)
+        return bool(user.get("is_admin"))
+    except Exception:
+        return False
+
+
 async def _send_step(message: Message, text: str, reply_markup, *, edit: bool = False) -> None:
     if edit:
         try:
@@ -225,7 +235,7 @@ async def on_photo(message: Message):
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
-    if message.from_user.id not in settings.admin_ids:
+    if not await _is_admin(message.from_user.id):
         return
     t = await get_t("ru")
     await message.answer(t.get("admin_menu", "Admin"), reply_markup=admin_keyboard(t))
@@ -233,7 +243,7 @@ async def cmd_admin(message: Message):
 
 @router.callback_query(F.data == "admin:stats")
 async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id not in settings.admin_ids:
+    if not await _is_admin(callback.from_user.id):
         return
     stats = await backend.admin_stats(callback.from_user.id)
     text = (
@@ -250,7 +260,7 @@ async def admin_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin:postback")
 async def admin_postback(callback: CallbackQuery):
-    if callback.from_user.id not in settings.admin_ids:
+    if not await _is_admin(callback.from_user.id):
         return
     urls = await backend.admin_postback_urls(callback.from_user.id)
     text = f"Registration:\n{urls['registration'].replace('{telegram_id}', str(callback.from_user.id))}\n\nDeposit:\n{urls['deposit'].replace('{telegram_id}', str(callback.from_user.id))}"
@@ -260,7 +270,7 @@ async def admin_postback(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin:unlimited")
 async def admin_unlimited(callback: CallbackQuery):
-    if callback.from_user.id not in settings.admin_ids:
+    if not await _is_admin(callback.from_user.id):
         return
     await callback.message.answer("Перешлите сообщение пользователя или отправьте его Telegram ID для выдачи безлимита.")
     await callback.answer()
@@ -268,7 +278,7 @@ async def admin_unlimited(callback: CallbackQuery):
 
 @router.message(F.forward_from)
 async def admin_grant_forward(message: Message):
-    if message.from_user.id not in settings.admin_ids:
+    if not await _is_admin(message.from_user.id):
         return
     target_id = message.forward_from.id
     await backend.grant_unlimited(message.from_user.id, target_id)
@@ -277,7 +287,7 @@ async def admin_grant_forward(message: Message):
 
 @router.message(F.text.regexp(r"^\d+$"))
 async def admin_grant_id(message: Message):
-    if message.from_user.id not in settings.admin_ids:
+    if not await _is_admin(message.from_user.id):
         return
     target_id = int(message.text)
     await backend.grant_unlimited(message.from_user.id, target_id)

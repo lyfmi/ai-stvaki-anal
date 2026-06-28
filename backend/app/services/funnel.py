@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models import User
 
 
@@ -35,9 +34,6 @@ class FunnelService:
         self.db.add(user)
         await self.db.flush()
         return user
-
-    def _is_admin(self, telegram_id: int) -> bool:
-        return telegram_id in settings.admin_ids
 
     async def set_language(self, user: User, language: str) -> User:
         user.language = language
@@ -92,8 +88,10 @@ class FunnelService:
             user.funnel_state = FunnelState.REGISTRATION_PENDING
         return user
 
-    def can_analyze_funnel(self, user: User, telegram_id: int) -> bool:
-        if self._is_admin(telegram_id):
+    async def can_analyze_funnel(self, user: User, telegram_id: int) -> bool:
+        from app.services.admin import AdminService
+
+        if await AdminService(self.db).is_admin(telegram_id):
             return True
         return user.funnel_state in (FunnelState.ACTIVE, FunnelState.UNLIMITED, FunnelState.LIMIT_EXCEEDED) and (
             user.is_deposited or user.has_unlimited
