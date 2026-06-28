@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import require_internal_auth
+from app.core.deps import require_internal_auth, require_internal_service
 from app.schemas import NotifyRequest, UserOut
 from app.services.funnel import FunnelService
 from app.services.settings import SettingsService
@@ -22,17 +22,21 @@ async def get_user(
 
 
 @router.get("/settings")
-async def get_settings(_: int | None = Depends(require_internal_auth), db: AsyncSession = Depends(get_db)):
+async def get_settings(_: None = Depends(require_internal_service), db: AsyncSession = Depends(get_db)):
     svc = SettingsService(db)
     return await svc.get_all()
 
 
 @router.get("/translations/{locale}")
-async def get_translations(locale: str, _: int | None = Depends(require_internal_auth), db: AsyncSession = Depends(get_db)):
+async def get_translations(
+    locale: str,
+    _: None = Depends(require_internal_service),
+    db: AsyncSession = Depends(get_db),
+):
     svc = TranslationService(db)
     return await svc.get_many(locale)
 
 
 @router.post("/notify")
-async def notify(_: NotifyRequest, __: int | None = Depends(require_internal_auth)):
+async def notify(_: NotifyRequest, __: None = Depends(require_internal_service)):
     return {"ok": True, "note": "Bot handles notifications directly"}

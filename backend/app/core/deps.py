@@ -7,6 +7,13 @@ from app.core.database import get_db
 from app.models import User
 
 
+async def require_internal_service(
+    x_internal_secret: str | None = Header(None, alias="X-Internal-Secret"),
+) -> None:
+    if x_internal_secret is None or x_internal_secret != settings.internal_api_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal secret")
+
+
 async def require_internal_auth(
     x_internal_secret: str | None = Header(None, alias="X-Internal-Secret"),
     x_telegram_user_id: int | None = Header(None, alias="X-Telegram-User-Id"),
