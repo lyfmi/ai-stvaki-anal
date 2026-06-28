@@ -30,7 +30,7 @@ export interface AppContextProps {
   onMockLogin: () => void;
   apiCall: (endpoint: string, options?: RequestInit) => Promise<any>;
   onLangChange: (l: Lang) => void;
-  onRefreshStatus: () => void;
+  onRefreshStatus: () => Promise<void>;
   analysisCache: Record<string, any>;
   setAnalysisCache: Dispatch<SetStateAction<Record<string, any>>>;
 }
@@ -54,9 +54,11 @@ function DestinationView({
           token={ctx.token}
           hasFullAccess={ctx.hasFullAccess}
           statusInfo={ctx.statusInfo}
+          settings={ctx.settings}
+          apiCall={ctx.apiCall}
+          onRefreshStatus={ctx.onRefreshStatus}
           onResult={(id) => {
             push({ type: "analyzeResult", id });
-            ctx.onRefreshStatus();
           }}
         />
       );

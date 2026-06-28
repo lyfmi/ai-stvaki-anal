@@ -22,7 +22,9 @@ class TributeService:
         self.notify = TelegramNotify()
 
     async def create_order(self, user: User, title: str, amount: int, currency: str) -> dict:
-        if not settings.tribute_api_key:
+        settings_svc = __import__("app.services.settings", fromlist=["SettingsService"]).SettingsService(self.db)
+        api_key = await settings_svc.get("tribute_api_key", "") or settings.tribute_api_key
+        if not api_key:
             raise RuntimeError("TRIBUTE_API_KEY is not configured")
 
         payload = {
@@ -39,7 +41,7 @@ class TributeService:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{self.TRIBUTE_API}/shop/orders",
-                headers={"Api-Key": settings.tribute_api_key},
+                headers={"Api-Key": api_key},
                 json=payload,
             )
             response.raise_for_status()

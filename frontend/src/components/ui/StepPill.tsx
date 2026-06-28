@@ -57,19 +57,21 @@ export function StepPills({ t, activeStep = null }: StepPillProps) {
         })}
       </div>
 
-      <div className="grid grid-cols-3 mt-1.5">
-        {steps.map(({ key, step }) => {
+      <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] mt-1.5">
+        {steps.map(({ key, step }, idx) => {
           const active = activeStep === step;
           const done = activeStep !== null && activeStep > step;
           return (
-            <span
-              key={key}
-              className={`text-[10px] text-center leading-tight min-h-[2.5em] px-0.5 transition-all duration-300 ${
-                active ? "text-accent" : done ? "text-textMuted opacity-70" : "text-textMuted opacity-40"
-              }`}
-            >
-              {labels[key]}
-            </span>
+            <div key={key} className="contents">
+              <span
+                className={`text-[10px] text-center leading-tight min-h-[2.5em] px-0.5 transition-all duration-300 ${
+                  active ? "text-accent" : done ? "text-textMuted opacity-70" : "text-textMuted opacity-40"
+                }`}
+              >
+                {labels[key]}
+              </span>
+              {idx < steps.length - 1 && <span aria-hidden="true" />}
+            </div>
           );
         })}
       </div>

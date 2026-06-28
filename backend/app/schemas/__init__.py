@@ -133,6 +133,11 @@ class SettingsUpdate(BaseModel):
     unlimited_price_amount: int | None = None
     unlimited_price_currency: str | None = None
     tribute_enabled: bool | None = None
+    tribute_api_key: str | None = None
+    tribute_shop_id: str | None = None
+    tribute_webhook_secret: str | None = None
+    tribute_mode: str | None = None
+    tribute_product_link: str | None = None
     daily_attempts_limit: int | None = None
 
 

@@ -44,12 +44,11 @@ async def get_status(user=Depends(_get_user), db: AsyncSession = Depends(get_db)
     admin_svc = AdminService(db)
     can_analyze_limit, remaining, reset_at = await limits.can_analyze(user)
     can_funnel = await funnel.can_analyze_funnel(user, user.telegram_id)
-    is_admin = await admin_svc.is_admin(user.telegram_id)
     daily_limit = await limits.get_daily_limit()
     enriched = await admin_svc.enrich_user(user)
     return UserStatusOut(
         user=enriched,
-        can_analyze=can_funnel and (can_analyze_limit or is_admin),
+        can_analyze=can_funnel and can_analyze_limit,
         attempts_remaining=remaining if not user.has_unlimited else 999999,
         attempts_reset_at=reset_at,
         daily_limit=daily_limit,

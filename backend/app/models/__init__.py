@@ -99,6 +99,7 @@ class Broadcast(Base):
     admin_telegram_id: Mapped[int] = mapped_column(BigInteger)
     message_text: Mapped[str] = mapped_column(Text)
     photo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    photo_paths: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     sent_count: Mapped[int] = mapped_column(Integer, default=0)
     failed_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

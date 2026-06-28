@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -10,14 +10,12 @@ from app.schemas import (
     AdminRemove,
     AdminStatsOut,
     AffiliateUpdate,
-    BroadcastCreate,
-    NotifyRequest,
-    PaymentCreateOut,
     SettingsUpdate,
     UnlimitedGrant,
     UserOut,
 )
 from app.services.admin import AdminService
+from app.services.broadcast import BroadcastService
 from app.services.funnel import FunnelService
 from app.services.settings import SettingsService
 from app.services.translations import StatsService
@@ -81,6 +79,14 @@ async def admin_stats(
     return AdminStatsOut(**stats)
 
 
+@router.get("/settings")
+async def get_admin_settings(
+    _: int = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    return await SettingsService(db).get_all()
+
+
 @router.put("/settings")
 async def update_settings(
     body: SettingsUpdate,
@@ -129,20 +135,51 @@ async def revoke_unlimited(
 
 @router.post("/broadcast")
 async def create_broadcast(
-    body: BroadcastCreate,
+    text: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
     admin_id: int = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    import uuid
+    from pathlib import Path
+
     from app.models import Broadcast
+
+    if len(photos) > 5:
+        raise HTTPException(status_code=400, detail="Maximum 5 photos allowed")
 
     broadcast = Broadcast(
         admin_telegram_id=admin_id,
-        message_text=body.text,
-        photo_url=body.photo_url,
+        message_text=text,
     )
     db.add(broadcast)
     await db.flush()
-    return {"id": str(broadcast.id), "status": "queued"}
+
+    photo_paths: list[str] = []
+    if photos:
+        storage_dir = Path(settings.storage_path) / "broadcasts" / str(broadcast.id)
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        for idx, upload in enumerate(photos):
+            content = await upload.read()
+            if len(content) > 10 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail="Photo too large (max 10MB)")
+            ext = Path(upload.filename or "photo.jpg").suffix or ".jpg"
+            path = storage_dir / f"{idx}{ext}"
+            path.write_bytes(content)
+            photo_paths.append(str(path))
+        broadcast.photo_paths = photo_paths
+
+    try:
+        sent, failed = await BroadcastService(db).run(broadcast)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "id": str(broadcast.id),
+        "status": "completed",
+        "sent_count": sent,
+        "failed_count": failed,
+    }
 
 
 @router.get("/postback-urls")

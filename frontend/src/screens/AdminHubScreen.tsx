@@ -62,23 +62,34 @@ function AdminStatsTab({ apiCall }: { apiCall: any }) {
 // Broadcast Subtab
 function AdminBroadcastTab({ apiCall }: { apiCall: any }) {
   const [text, setText] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+
+  const handlePhotosChange = (files: FileList | null) => {
+    if (!files) return;
+    const picked = Array.from(files).slice(0, 5);
+    setPhotos(picked);
+    setPreviews(picked.map((f) => URL.createObjectURL(f)));
+  };
 
   const handleBroadcast = async () => {
     if (!text.trim()) return;
     try {
       setLoading(true);
       setResult(null);
+      const formData = new FormData();
+      formData.append("text", text);
+      photos.forEach((photo) => formData.append("photos", photo));
       const res = await apiCall("/admin/broadcast", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, photo_url: photoUrl.trim() || null })
+        body: formData,
       });
-      setResult(`Успешно! ID Рассылки: ${res.id}`);
+      setResult(`Готово! Отправлено: ${res.sent_count}, ошибок: ${res.failed_count}`);
       setText("");
-      setPhotoUrl("");
+      setPhotos([]);
+      setPreviews([]);
     } catch (e: any) {
       setResult(`Ошибка: ${e.message}`);
     } finally {
@@ -92,7 +103,7 @@ function AdminBroadcastTab({ apiCall }: { apiCall: any }) {
       <div className="flex flex-col gap-3 font-mono text-xs">
         <div className="flex flex-col gap-1">
           <span className="text-textMuted">Текст сообщения:</span>
-          <textarea 
+          <textarea
             rows={4}
             className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary resize-none"
             value={text}
@@ -101,19 +112,29 @@ function AdminBroadcastTab({ apiCall }: { apiCall: any }) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-textMuted">URL изображения (необязательно):</span>
-          <input 
-            type="text" 
-            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
-            value={photoUrl}
-            onChange={(e) => setPhotoUrl(e.target.value)}
-            placeholder="https://example.com/photo.jpg"
-          />
+          <span className="text-textMuted">Фото (до 5, необязательно):</span>
+          <label className="magnetic-btn text-xs font-medium px-4 py-2.5 rounded-xl border border-borderSubtle bg-surfaceElevated cursor-pointer w-fit">
+            Выбрать фото
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => handlePhotosChange(e.target.files)}
+            />
+          </label>
+          {previews.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              {previews.map((src) => (
+                <img key={src} src={src} alt="" className="w-14 h-14 object-cover rounded-lg border border-borderSubtle" />
+              ))}
+            </div>
+          )}
         </div>
 
         {result && <div className="p-3 bg-surface border border-accent/10 text-accent rounded-xl">{result}</div>}
 
-        <button 
+        <button
           onClick={handleBroadcast}
           disabled={loading || !text.trim()}
           className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
@@ -260,7 +281,7 @@ function AdminSettingsTab({ apiCall }: { apiCall: any }) {
 
   const loadSettings = async () => {
     try {
-      const res = await apiCall("/user/settings");
+      const res = await apiCall("/admin/settings");
       setSettings(res);
     } catch (e) {
       console.error("Failed to load settings", e);
@@ -281,7 +302,6 @@ function AdminSettingsTab({ apiCall }: { apiCall: any }) {
         body: JSON.stringify({
           channel_url: settings.channel_url,
           support_url: settings.support_url,
-          unlimited_price_amount: parseInt(settings.unlimited_price_amount),
           daily_attempts_limit: parseInt(settings.daily_attempts_limit),
         })
       });
@@ -320,18 +340,9 @@ function AdminSettingsTab({ apiCall }: { apiCall: any }) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-textMuted">Стоимость Безлимита (Tribute):</span>
-          <input 
-            type="number" 
-            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
-            value={settings.unlimited_price_amount || ""}
-            onChange={(e) => handleKeyChange("unlimited_price_amount", e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-textMuted">Лимит попыток в сутки:</span>
-          <input 
-            type="number" 
+          <span className="text-textMuted">Лимит анализов в сутки (обычные пользователи):</span>
+          <input
+            type="number"
             className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
             value={settings.daily_attempts_limit || ""}
             onChange={(e) => handleKeyChange("daily_attempts_limit", e.target.value)}
@@ -549,9 +560,164 @@ function AdminAdminsTab({ apiCall }: { apiCall: any }) {
   );
 }
 
+// Tribute settings Subtab
+function AdminTributeTab({ apiCall }: { apiCall: any }) {
+  const [settings, setSettings] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const loadSettings = async () => {
+    try {
+      const res = await apiCall("/admin/settings");
+      setSettings(res);
+    } catch (e) {
+      console.error("Failed to load tribute settings", e);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const handleUpdate = async () => {
+    try {
+      setLoading(true);
+      setMsg("");
+      await apiCall("/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tribute_enabled: settings.tribute_enabled === "true" || settings.tribute_enabled === true,
+          tribute_mode: settings.tribute_mode,
+          tribute_api_key: settings.tribute_api_key,
+          tribute_shop_id: settings.tribute_shop_id,
+          tribute_webhook_secret: settings.tribute_webhook_secret,
+          tribute_product_link: settings.tribute_product_link,
+          unlimited_enabled: settings.unlimited_enabled === "true" || settings.unlimited_enabled === true,
+          unlimited_price_amount: parseInt(settings.unlimited_price_amount),
+          unlimited_price_currency: settings.unlimited_price_currency,
+        }),
+      });
+      setMsg("Настройки Tribute сохранены!");
+      await loadSettings();
+    } catch (e: any) {
+      setMsg(`Ошибка: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyChange = (key: string, val: string | boolean) => {
+    setSettings((prev: any) => ({ ...prev, [key]: val }));
+  };
+
+  const boolVal = (key: string) => settings[key] === "true" || settings[key] === true;
+
+  return (
+    <div className="flex flex-col gap-4 font-mono text-xs">
+      <h3 className="font-bold text-textPrimary text-sm uppercase">Tribute / Безлимит</h3>
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center gap-2 text-textMuted">
+          <input
+            type="checkbox"
+            checked={boolVal("tribute_enabled")}
+            onChange={(e) => handleKeyChange("tribute_enabled", e.target.checked)}
+          />
+          Tribute включён
+        </label>
+        <label className="flex items-center gap-2 text-textMuted">
+          <input
+            type="checkbox"
+            checked={boolVal("unlimited_enabled")}
+            onChange={(e) => handleKeyChange("unlimited_enabled", e.target.checked)}
+          />
+          Продажа безлимита включена
+        </label>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Режим Tribute:</span>
+          <select
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={settings.tribute_mode || "shop_api"}
+            onChange={(e) => handleKeyChange("tribute_mode", e.target.value)}
+          >
+            <option value="shop_api">shop_api</option>
+            <option value="product_link">product_link</option>
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Tribute API Key:</span>
+          <input
+            type="password"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={settings.tribute_api_key || ""}
+            onChange={(e) => handleKeyChange("tribute_api_key", e.target.value)}
+            placeholder="Api-Key из Tribute"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Tribute Shop ID:</span>
+          <input
+            type="text"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={settings.tribute_shop_id || ""}
+            onChange={(e) => handleKeyChange("tribute_shop_id", e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Webhook Secret:</span>
+          <input
+            type="password"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={settings.tribute_webhook_secret || ""}
+            onChange={(e) => handleKeyChange("tribute_webhook_secret", e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Ссылка на продукт (product_link):</span>
+          <input
+            type="text"
+            className="p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+            value={settings.tribute_product_link || ""}
+            onChange={(e) => handleKeyChange("tribute_product_link", e.target.value)}
+            placeholder="https://t.me/tribute/..."
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-textMuted">Цена безлимита:</span>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              className="flex-1 p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary"
+              value={settings.unlimited_price_amount || ""}
+              onChange={(e) => handleKeyChange("unlimited_price_amount", e.target.value)}
+            />
+            <input
+              type="text"
+              className="w-20 p-3 rounded-xl bg-appBg border border-borderSubtle text-textPrimary uppercase"
+              value={settings.unlimited_price_currency || "rub"}
+              onChange={(e) => handleKeyChange("unlimited_price_currency", e.target.value)}
+            />
+          </div>
+        </div>
+
+        {msg && <div className="text-accent font-bold">{msg}</div>}
+
+        <button
+          onClick={handleUpdate}
+          disabled={loading}
+          className="magnetic-btn w-full bg-accent text-appBg font-bold py-3 rounded-xl flex items-center justify-center gap-2"
+        >
+          {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <SettingsIcon className="w-4 h-4" />}
+          Сохранить Tribute
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
   const [subTab, setSubTab] = useState<
-    "stats" | "broadcast" | "affiliate" | "unlimited" | "settings" | "postback" | "admins"
+    "stats" | "broadcast" | "affiliate" | "unlimited" | "settings" | "tribute" | "postback" | "admins"
   >("stats");
 
   if (!user?.is_admin) {
@@ -566,7 +732,7 @@ export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(["stats", "broadcast", "affiliate", "unlimited", "settings", "postback", "admins"] as const).map((tab) => (
+        {(["stats", "broadcast", "affiliate", "unlimited", "settings", "tribute", "postback", "admins"] as const).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -588,6 +754,7 @@ export function AdminHubScreen({ user, apiCall }: AdminHubProps) {
         {subTab === "affiliate" && <AdminAffiliateTab apiCall={apiCall} />}
         {subTab === "unlimited" && <AdminUnlimitedTab apiCall={apiCall} />}
         {subTab === "settings" && <AdminSettingsTab apiCall={apiCall} />}
+        {subTab === "tribute" && <AdminTributeTab apiCall={apiCall} />}
         {subTab === "postback" && <AdminPostbackTab apiCall={apiCall} />}
         {subTab === "admins" && <AdminAdminsTab apiCall={apiCall} />}
       </div>

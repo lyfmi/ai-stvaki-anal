@@ -8,6 +8,7 @@ from app.core.security import verify_tribute_signature
 from app.schemas import NotifyRequest, UserOut
 from app.services.funnel import FunnelService
 from app.services.postback import PostbackService
+from app.services.settings import SettingsService
 from app.services.telegram_notify import TelegramNotify
 from app.services.tribute import TributeService
 
@@ -66,7 +67,11 @@ async def postback_deposit(request: Request, db: AsyncSession = Depends(get_db))
 async def tribute_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     body = await request.body()
     signature = request.headers.get("trbt-signature", "")
-    secret = settings.tribute_webhook_secret or settings.tribute_api_key
+    secret = (
+        await SettingsService(db).get("tribute_webhook_secret", "")
+        or settings.tribute_webhook_secret
+        or settings.tribute_api_key
+    )
     if secret and not verify_tribute_signature(body, signature, secret):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
