@@ -1,8 +1,11 @@
 import json
 import time
 
+from pydantic import ValidationError
+
 from app.core.config import settings
 from app.schemas import AnalysisResult, SearchPayload, VisionPayload
+from app.services.ai.normalize import normalize_analysis_data, parse_analysis_result
 from app.services.ai.prompts.synthesis import SYNTHESIS_SYSTEM_PROMPT, SYNTHESIS_USER_TEMPLATE
 from app.services.ai.prompts.vision import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 from app.services.ai.providers.nous_client import NousClient
@@ -53,6 +56,11 @@ class VisionExtractor:
         return VisionPayload.model_validate(data)
 
 
+SYNTHESIS_REPAIR_PROMPT = """The previous JSON was invalid. Return ONLY one JSON object with EXACTLY these keys:
+recommendation, market, coefficient, probability_percent, risk, arguments, confidence, explanation.
+Do not use empty keys. Do not rename keys. recommendation must be a non-empty string."""
+
+
 class Synthesizer:
     def __init__(self) -> None:
         self.client = NousClient()
@@ -69,7 +77,15 @@ class Synthesizer:
             search_json=json.dumps(search.model_dump(), ensure_ascii=False),
         )
         data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, user_prompt)
-        result = AnalysisResult.model_validate(data)
+        try:
+            result = parse_analysis_result(data)
+        except (ValidationError, RuntimeError):
+            repair_prompt = (
+                f"{user_prompt}\n\nPrevious invalid JSON:\n{json.dumps(data, ensure_ascii=False)}\n\n"
+                f"{SYNTHESIS_REPAIR_PROMPT}"
+            )
+            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, repair_prompt)
+            result = parse_analysis_result(data)
         if search.search_status == "failed":
             result.confidence = "low" if result.confidence == "high" else result.confidence
         return result

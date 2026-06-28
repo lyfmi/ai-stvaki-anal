@@ -1,6 +1,7 @@
 import uuid
 from pathlib import Path
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +42,7 @@ class AnalysisService:
             )
         except UnreadableScreenshotError as e:
             raise ValueError(str(e)) from e
-        except RuntimeError as e:
+        except (RuntimeError, ValidationError) as e:
             raise ValueError("AI analysis failed") from e
 
         vision = pipeline_result["vision"]
