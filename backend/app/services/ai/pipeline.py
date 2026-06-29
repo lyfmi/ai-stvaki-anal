@@ -24,6 +24,7 @@ from app.services.ai.vision_guard import (
     enforce_authoritative_teams,
     filter_search_for_teams,
     vision_needs_retry,
+    vision_teams_valid,
 )
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
@@ -32,6 +33,16 @@ from app.services.ai.search_enricher import SearchEnricher
 
 class UnreadableScreenshotError(Exception):
     pass
+
+
+TEAMS_UNREADABLE_MSG = (
+    "Не удалось распознать команды на скриншоте. Выделите карточку матча крупнее."
+)
+
+
+def _ensure_vision_teams(vision: VisionPayload) -> None:
+    if not vision_teams_valid(vision):
+        raise UnreadableScreenshotError(TEAMS_UNREADABLE_MSG)
 
 
 MOCK_VISION = {
@@ -125,6 +136,7 @@ class VisionExtractor:
                     model=model,
                 )
                 vision = VisionPayload.model_validate(data)
+            _ensure_vision_teams(vision)
             return vision
         except (ValidationError, RuntimeError):
             data = await self.client.vision_json(
@@ -134,7 +146,9 @@ class VisionExtractor:
                 mime_type=mime,
                 model=model,
             )
-            return VisionPayload.model_validate(data)
+            vision = VisionPayload.model_validate(data)
+            _ensure_vision_teams(vision)
+            return vision
 
 
 SYNTHESIS_REPAIR_PROMPT = """The previous JSON was invalid or truncated. Return ONLY one JSON object with keys:
@@ -203,6 +217,51 @@ class Synthesizer:
             )
             data = await self.client.text_json(
                 COMPACT_SYNTHESIS_SYSTEM_PROMPT, compact_prompt, model=model, max_tokens=token_limit
+            )
+            result = parse_analysis_result(data)
+
+        if not (result.recommendation or "").strip():
+            raise RuntimeError("AI synthesis returned empty recommendation")
+        return result
+
+    async def _call_compact_synthesis(
+        self,
+        compact_prompt: str,
+        *,
+        model: str | None = None,
+    ) -> AnalysisResult:
+        token_limit = settings.groq_max_tokens
+        data = await self.client.text_json(
+            COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+            compact_prompt,
+            model=model,
+            max_tokens=token_limit,
+        )
+        try:
+            result = parse_analysis_result(data)
+        except (ValidationError, RuntimeError):
+            repair_prompt = (
+                f"{compact_prompt}\n\nPrevious invalid JSON:\n{json.dumps(data, ensure_ascii=False)}\n\n"
+                f"{SYNTHESIS_REPAIR_PROMPT}"
+            )
+            data = await self.client.text_json(
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+                repair_prompt,
+                model=model,
+                max_tokens=token_limit,
+            )
+            result = parse_analysis_result(data)
+
+        if _looks_truncated(data) or not (result.recommendation or "").strip():
+            compact_retry = (
+                f"{compact_prompt}\n\nPrevious response was truncated or empty. Return compact but COMPLETE JSON. "
+                "Use at most 2 short arguments. recommendation must be non-empty."
+            )
+            data = await self.client.text_json(
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+                compact_retry,
+                model=model,
+                max_tokens=token_limit,
             )
             result = parse_analysis_result(data)
 
@@ -323,13 +382,7 @@ class Synthesizer:
             search_bullets=_search_bullets(search),
         )
         try:
-            data = await self.client.text_json(
-                COMPACT_SYNTHESIS_SYSTEM_PROMPT,
-                compact_prompt,
-                model=model,
-                max_tokens=settings.groq_max_tokens,
-            )
-            result = parse_analysis_result(data)
+            result = await self._call_compact_synthesis(compact_prompt, model=model)
         except (ValidationError, RuntimeError):
             user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
                 lang=user_lang,
@@ -346,6 +399,7 @@ class Synthesizer:
         home = str(match.get("home_team", ""))
         away = str(match.get("away_team", ""))
         result = anchor_teams_in_recommendation(result, home, away, user_lang=user_lang)
+        result = enforce_authoritative_teams(result, home, away, user_lang=user_lang)
         result = apply_odds_policy(result, search=search, home=home, away=away)
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk

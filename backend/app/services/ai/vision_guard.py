@@ -55,12 +55,49 @@ def _notes_mention_team(notes: str, canonical: str) -> bool:
     return any(alias in notes_l for alias in aliases)
 
 
+_PLACEHOLDER_TEAM_PATTERNS = (
+    r"^home$",
+    r"^away$",
+    r"^team\s*a$",
+    r"^team\s*b$",
+    r"^team\s*1$",
+    r"^team\s*2$",
+    r"^opponent$",
+    r"^домашн",
+    r"^гостев",
+    r"^хозяев",
+    r"^команда\s*1$",
+    r"^команда\s*2$",
+    r"^команда\s*а$",
+    r"^команда\s*б$",
+)
+
+
+def is_placeholder_team(name: str | None) -> bool:
+    text = _norm(name)
+    if not text:
+        return True
+    return any(re.search(pattern, text) for pattern in _PLACEHOLDER_TEAM_PATTERNS)
+
+
+def vision_teams_valid(vision: VisionPayload) -> bool:
+    home = (vision.home_team or "").strip()
+    away = (vision.away_team or "").strip()
+    if not home or not away or home.lower() == away.lower():
+        return False
+    if is_placeholder_team(home) or is_placeholder_team(away):
+        return False
+    return True
+
+
 def vision_needs_retry(vision: VisionPayload) -> bool:
     home = _norm(vision.home_team)
     away = _norm(vision.away_team)
     notes = vision.screenshot_notes or ""
 
     if not home or not away or home == away:
+        return True
+    if is_placeholder_team(vision.home_team) or is_placeholder_team(vision.away_team):
         return True
     if vision.parse_confidence in ("low", "failed"):
         return True
@@ -103,6 +140,8 @@ def filter_search_for_teams(search: SearchPayload, home: str | None, away: str |
         for item in search.results
         if _blob_mentions_teams(f"{item.title} {item.snippet}", home, away)
     ]
+    if not filtered:
+        return search
     return SearchPayload(
         queries_executed=search.queries_executed,
         results=filtered[:8],

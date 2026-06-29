@@ -101,7 +101,8 @@ Web search results:
 Match context:
 {match_context_json}
 
-pre_match: betting pick for the authoritative home_team vs away_team from match JSON only.
+pre_match or live: betting pick for the authoritative home_team vs away_team from match JSON only.
+live: match is in progress — recommend a live bet (not retrospective); is_betting_recommendation=true.
 coefficient ONLY from 1win odds in search snippets — if no 1win odds found, coefficient=null and probability_percent=null.
 Still give recommendation (what to bet on) even without coefficient.
 form_bars must have wins+draws+losses totaling 3-5 per team, not all zeros."""
@@ -118,12 +119,16 @@ Facts from web search:
 {search_bullets}
 
 Return ONE compact JSON. Max 2 short arguments in user language.
-If post_match: is_betting_recommendation=false, coefficient=null.
-If pre_match:
+recommendation MUST be a non-empty string.
+If post_match: is_betting_recommendation=false, coefficient=null, probability_percent=null.
+If pre_match or live:
+  - is_betting_recommendation=true
   - recommendation for {home} vs {away} only (e.g. "П1 — Победа {home}")
+  - live: match is in progress — suggest a live bet, not a finished result
   - coefficient ONLY if explicit 1win odds appear in facts above — else null
   - probability_percent=null when coefficient is null
   - NEVER invent odds from other bookmakers
+form_bars team names MUST be exactly "{home}" and "{away}".
 form_bars: each team wins+draws+losses >= 3 total, not all zeros."""
 
 COMPACT_SYNTHESIS_SYSTEM_PROMPT = """Sports betting analyst.

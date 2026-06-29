@@ -23,6 +23,17 @@ def test_coefficient_from_vision_brazil_japan_odds():
     assert coef == 1.74
 
 
+def test_coefficient_from_vision_returns_none_when_label_mismatch():
+    vision = VisionPayload(
+        home_team="Brazil",
+        away_team="Japan",
+        odds_on_screenshot=True,
+        available_outcomes=[{"label": "X", "coefficient": 3.71}],
+    )
+    coef = coefficient_from_vision(vision, "П1 — Победа Brazil")
+    assert coef is None
+
+
 def test_apply_odds_policy_clears_invented_without_1win():
     result = AnalysisResult(
         recommendation="П1 — Победа Brazil",

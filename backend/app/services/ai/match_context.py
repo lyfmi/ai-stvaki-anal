@@ -259,7 +259,9 @@ def resolve_match_context(
         mode = "pre_match"
     elif _search_indicates_finished(search, home, away):
         mode = "post_match"
-    elif vision.match_status_hint == "live" or _search_indicates_live(search, home, away):
+    elif vision.match_status_hint == "live" or (
+        vision.match_status_hint != "upcoming" and _search_indicates_live(search, home, away)
+    ):
         mode = "live"
     else:
         mode = "pre_match"

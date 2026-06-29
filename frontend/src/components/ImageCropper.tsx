@@ -18,7 +18,8 @@ interface CropRect {
 }
 
 const MIN_SIZE = 40;
-const MAX_IMAGE_HEIGHT = "42dvh";
+const MAX_VIEWPORT_HEIGHT_RATIO = 0.42;
+const MIN_DISPLAY_LONG_EDGE = 300;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -32,7 +33,18 @@ function normalizeRect(rect: CropRect, bounds: { w: number; h: number }): CropRe
   return { x, y, w, h };
 }
 
+function computeDisplaySize(naturalW: number, naturalH: number, maxW: number, maxH: number) {
+  let scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+  const minScale = Math.min(1, MIN_DISPLAY_LONG_EDGE / Math.max(naturalW, naturalH));
+  scale = Math.max(scale, minScale);
+  return {
+    w: Math.round(naturalW * scale),
+    h: Math.round(naturalH * scale),
+  };
+}
+
 export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const cropRef = useRef<CropRect | null>(null);
@@ -82,12 +94,21 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
   const measureImage = useCallback(() => {
     const img = imgRef.current;
     if (!img || !img.naturalWidth) return;
-    const rect = img.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) return;
 
-    naturalRef.current = { w: img.naturalWidth, h: img.naturalHeight };
-    displayRef.current = { w: rect.width, h: rect.height };
-    setDisplay({ w: rect.width, h: rect.height });
+    const naturalW = img.naturalWidth;
+    const naturalH = img.naturalHeight;
+    naturalRef.current = { w: naturalW, h: naturalH };
+
+    const maxH = window.innerHeight * MAX_VIEWPORT_HEIGHT_RATIO;
+    const containerW = containerRef.current?.clientWidth ?? window.innerWidth - 32;
+    const maxW = Math.min(containerW, window.innerWidth - 32);
+    const { w: displayW, h: displayH } = computeDisplaySize(naturalW, naturalH, maxW, maxH);
+
+    img.style.width = `${displayW}px`;
+    img.style.height = `${displayH}px`;
+
+    displayRef.current = { w: displayW, h: displayH };
+    setDisplay({ w: displayW, h: displayH });
   }, []);
 
   useEffect(() => {
@@ -98,11 +119,16 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
   }, [file, clearCrop]);
 
   useEffect(() => {
-    const img = imgRef.current;
-    if (!img) return;
+    const container = containerRef.current;
+    if (!container) return;
     const observer = new ResizeObserver(() => measureImage());
-    observer.observe(img);
-    return () => observer.disconnect();
+    observer.observe(container);
+    const onResize = () => measureImage();
+    window.addEventListener("resize", onResize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
   }, [src, measureImage]);
 
   const pointerPos = (e: React.PointerEvent) => {
@@ -203,13 +229,15 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
 
       <p className="text-[11px] text-textMuted px-4 leading-snug shrink-0">{t.crop_hint_short}</p>
 
-      <div className="flex-1 min-h-0 flex items-center justify-center px-4 py-2 overflow-hidden">
+      <div
+        ref={containerRef}
+        className="flex-1 min-h-0 flex items-center justify-center px-4 py-2 overflow-hidden"
+      >
         <div
           className="relative select-none touch-none"
           style={{
-            width: display.w || "100%",
+            width: display.w || undefined,
             height: display.h || undefined,
-            maxHeight: MAX_IMAGE_HEIGHT,
             maxWidth: "100%",
           }}
           onPointerDown={onPointerDown}
@@ -221,8 +249,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
             ref={imgRef}
             src={src}
             alt=""
-            className="block rounded-lg pointer-events-none w-full h-full object-contain"
-            style={{ maxHeight: MAX_IMAGE_HEIGHT }}
+            className="block rounded-lg pointer-events-none max-w-full"
             onLoad={measureImage}
             draggable={false}
           />

@@ -1,5 +1,11 @@
-from app.schemas import AnalysisResult, VisionPayload
-from app.services.ai.vision_guard import enforce_authoritative_teams, vision_needs_retry
+from app.schemas import AnalysisResult, SearchPayload, SearchResultItem, VisionPayload
+from app.services.ai.vision_guard import (
+    enforce_authoritative_teams,
+    filter_search_for_teams,
+    is_placeholder_team,
+    vision_needs_retry,
+    vision_teams_valid,
+)
 
 
 def test_vision_needs_retry_when_france_but_notes_say_brazil_japan():
@@ -26,3 +32,35 @@ def test_enforce_scrubs_france_from_explanation():
     assert "франц" not in (out.recommendation or "").lower()
     assert "франц" not in (out.explanation or "").lower()
     assert "Brazil" in out.recommendation or "Бразил" in out.recommendation
+
+
+def test_vision_needs_retry_for_placeholder_teams():
+    vision = VisionPayload(
+        home_team="Домашняя",
+        away_team="Гостевая",
+        parse_confidence="high",
+        odds_on_screenshot=True,
+        available_outcomes=[{"label": "1", "coefficient": 1.74}],
+    )
+    assert vision_needs_retry(vision) is True
+    assert vision_teams_valid(vision) is False
+    assert is_placeholder_team("Home") is True
+    assert is_placeholder_team("Brazil") is False
+
+
+def test_filter_search_keeps_original_when_no_team_match():
+    search = SearchPayload(
+        queries_executed=["q"],
+        results=[
+            SearchResultItem(
+                query="q",
+                title="Unrelated headline",
+                snippet="Some other match preview",
+                url="https://example.com",
+            )
+        ],
+        search_status="ok",
+    )
+    filtered = filter_search_for_teams(search, "Brazil", "Japan")
+    assert len(filtered.results) == 1
+    assert filtered.results[0].title == "Unrelated headline"

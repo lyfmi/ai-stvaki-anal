@@ -68,9 +68,6 @@ def coefficient_from_vision(
         if _label_side(outcome.label) == side:
             return float(outcome.coefficient)
 
-    for outcome in outcomes:
-        if outcome.coefficient is not None:
-            return float(outcome.coefficient)
     return None
 
 
