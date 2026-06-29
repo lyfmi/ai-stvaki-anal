@@ -17,7 +17,7 @@ interface CropRect {
   h: number;
 }
 
-const MIN_SIZE = 48;
+const MIN_SIZE = 40;
 const MAX_IMAGE_HEIGHT = "42dvh";
 
 function clamp(value: number, min: number, max: number) {
@@ -32,44 +32,49 @@ function normalizeRect(rect: CropRect, bounds: { w: number; h: number }): CropRe
   return { x, y, w, h };
 }
 
-function insideCrop(x: number, y: number, crop: CropRect) {
-  return x >= crop.x && x <= crop.x + crop.w && y >= crop.y && y <= crop.y + crop.h;
-}
-
 export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const cropRef = useRef<CropRect>({ x: 0, y: 0, w: 0, h: 0 });
+  const cropRef = useRef<CropRect | null>(null);
+  const anchorRef = useRef<{ x: number; y: number } | null>(null);
   const displayRef = useRef({ w: 0, h: 0 });
   const naturalRef = useRef({ w: 0, h: 0 });
-  const dragRef = useRef<{
-    mode: "move" | "draw";
-    startX: number;
-    startY: number;
-    startCrop: CropRect;
-    moved: boolean;
-  } | null>(null);
+  const drawingRef = useRef(false);
 
   const [src, setSrc] = useState("");
   const [display, setDisplay] = useState({ w: 0, h: 0 });
-  const [crop, setCrop] = useState<CropRect>({ x: 0, y: 0, w: 0, h: 0 });
+  const [hasCrop, setHasCrop] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
-  const paintOverlay = useCallback((rect: CropRect) => {
+  const paintOverlay = useCallback((rect: CropRect | null) => {
     const node = overlayRef.current;
     if (!node) return;
+    if (!rect || rect.w < MIN_SIZE || rect.h < MIN_SIZE) {
+      node.style.display = "none";
+      return;
+    }
+    node.style.display = "block";
     node.style.left = `${rect.x}px`;
     node.style.top = `${rect.y}px`;
     node.style.width = `${rect.w}px`;
     node.style.height = `${rect.h}px`;
   }, []);
 
+  const clearCrop = useCallback(() => {
+    cropRef.current = null;
+    anchorRef.current = null;
+    drawingRef.current = false;
+    paintOverlay(null);
+    setHasCrop(false);
+  }, [paintOverlay]);
+
   const commitCrop = useCallback(
     (rect: CropRect) => {
-      cropRef.current = rect;
-      paintOverlay(rect);
-      setCrop(rect);
+      const bounds = displayRef.current;
+      const normalized = normalizeRect(rect, bounds);
+      cropRef.current = normalized;
+      paintOverlay(normalized);
+      setHasCrop(true);
     },
     [paintOverlay]
   );
@@ -83,28 +88,14 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     naturalRef.current = { w: img.naturalWidth, h: img.naturalHeight };
     displayRef.current = { w: rect.width, h: rect.height };
     setDisplay({ w: rect.width, h: rect.height });
-
-    if (cropRef.current.w < MIN_SIZE) {
-      const margin = 0.06;
-      commitCrop(
-        normalizeRect(
-          {
-            x: rect.width * margin,
-            y: rect.height * margin,
-            w: rect.width * (1 - margin * 2),
-            h: rect.height * (1 - margin * 2),
-          },
-          { w: rect.width, h: rect.height }
-        )
-      );
-    }
-  }, [commitCrop]);
+  }, []);
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
     setSrc(url);
+    clearCrop();
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, clearCrop]);
 
   useEffect(() => {
     const img = imgRef.current;
@@ -127,66 +118,41 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     if (confirming) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+
     const p = pointerPos(e);
-    const current = cropRef.current;
-    const bounds = displayRef.current;
-    const canMove = current.w >= MIN_SIZE && insideCrop(p.x, p.y, current);
-
-    dragRef.current = {
-      mode: canMove ? "move" : "draw",
-      startX: p.x,
-      startY: p.y,
-      startCrop: current,
-      moved: false,
-    };
-
-    if (!canMove) {
-      commitCrop(normalizeRect({ x: p.x, y: p.y, w: MIN_SIZE, h: MIN_SIZE }, bounds));
-    }
+    anchorRef.current = p;
+    drawingRef.current = true;
+    cropRef.current = { x: p.x, y: p.y, w: MIN_SIZE, h: MIN_SIZE };
+    paintOverlay(cropRef.current);
+    setHasCrop(false);
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag || confirming) return;
+    if (!drawingRef.current || !anchorRef.current || confirming) return;
     const p = pointerPos(e);
+    const anchor = anchorRef.current;
     const bounds = displayRef.current;
-    const dx = p.x - drag.startX;
-    const dy = p.y - drag.startY;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) drag.moved = true;
 
-    if (drag.mode === "move") {
-      const next = normalizeRect(
-        {
-          x: drag.startCrop.x + dx,
-          y: drag.startCrop.y + dy,
-          w: drag.startCrop.w,
-          h: drag.startCrop.h,
-        },
-        bounds
-      );
-      cropRef.current = next;
-      paintOverlay(next);
-      return;
-    }
+    const x = Math.min(anchor.x, p.x);
+    const y = Math.min(anchor.y, p.y);
+    const w = Math.abs(p.x - anchor.x);
+    const h = Math.abs(p.y - anchor.y);
 
-    const x = Math.min(drag.startX, p.x);
-    const y = Math.min(drag.startY, p.y);
-    const w = Math.abs(p.x - drag.startX);
-    const h = Math.abs(p.y - drag.startY);
-    const next = normalizeRect({ x, y, w, h }, bounds);
+    const next = normalizeRect({ x, y, w: Math.max(w, 1), h: Math.max(h, 1) }, bounds);
     cropRef.current = next;
     paintOverlay(next);
   };
 
   const onPointerUp = () => {
-    const drag = dragRef.current;
-    dragRef.current = null;
-    if (!drag) return;
-    if (!drag.moved) {
-      commitCrop(drag.startCrop);
-      return;
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    const current = cropRef.current;
+    if (current && current.w >= MIN_SIZE && current.h >= MIN_SIZE) {
+      commitCrop(current);
+    } else {
+      clearCrop();
     }
-    setCrop(cropRef.current);
+    anchorRef.current = null;
   };
 
   const handleConfirm = () => {
@@ -194,7 +160,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     const current = cropRef.current;
     const natural = naturalRef.current;
     const rect = img?.getBoundingClientRect();
-    if (!img || !rect || !natural.w || current.w < MIN_SIZE || current.h < MIN_SIZE) return;
+    if (!img || !rect || !natural.w || !current || current.w < MIN_SIZE || current.h < MIN_SIZE) return;
 
     setConfirming(true);
 
@@ -213,31 +179,6 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     }
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-    // #region agent log
-    fetch("http://127.0.0.1:7290/ingest/4031f1b2-29d6-4b82-962e-403dc72c5a73", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "328e66" },
-      body: JSON.stringify({
-        sessionId: "328e66",
-        runId: "crop-fix",
-        hypothesisId: "H4",
-        location: "ImageCropper.tsx:handleConfirm",
-        message: "crop export dimensions",
-        data: {
-          naturalW: natural.w,
-          naturalH: natural.h,
-          renderW: Math.round(rect.width),
-          renderH: Math.round(rect.height),
-          outW: canvas.width,
-          outH: canvas.height,
-          cropPctW: Math.round((sw / natural.w) * 100),
-          cropPctH: Math.round((sh / natural.h) * 100),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-
     canvas.toBlob(
       (blob) => {
         setConfirming(false);
@@ -247,7 +188,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
         );
       },
       "image/jpeg",
-      0.92
+      0.95
     );
   };
 
@@ -262,7 +203,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
 
       <p className="text-[11px] text-textMuted px-4 leading-snug shrink-0">{t.crop_hint_short}</p>
 
-      <div ref={containerRef} className="flex-1 min-h-0 flex items-center justify-center px-4 py-2 overflow-hidden">
+      <div className="flex-1 min-h-0 flex items-center justify-center px-4 py-2 overflow-hidden">
         <div
           className="relative select-none touch-none"
           style={{
@@ -285,19 +226,11 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
             onLoad={measureImage}
             draggable={false}
           />
-          {display.w > 0 && crop.w > 0 && (
-            <div
-              ref={overlayRef}
-              className="absolute border-2 border-accent pointer-events-none"
-              style={{
-                left: crop.x,
-                top: crop.y,
-                width: crop.w,
-                height: crop.h,
-                boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
-              }}
-            />
-          )}
+          <div
+            ref={overlayRef}
+            className="absolute border-2 border-accent pointer-events-none hidden"
+            style={{ boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }}
+          />
         </div>
       </div>
 
@@ -313,7 +246,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={confirming || crop.w < MIN_SIZE}
+          disabled={confirming || !hasCrop}
           className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
         >
           {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}

@@ -99,6 +99,21 @@ def _coerce_int(value: Any) -> int | None:
     return int(round(number))
 
 
+def _coerce_confidence(value: Any) -> str:
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("low", "medium", "high", "низкая", "средняя", "высокая"):
+            mapping = {"низкая": "low", "средняя": "medium", "высокая": "high"}
+            return mapping.get(text, text)
+    if isinstance(value, (int, float)):
+        if value >= 0.7:
+            return "high"
+        if value >= 0.4:
+            return "medium"
+        return "low"
+    return str(value).strip() if value is not None else "medium"
+
+
 def _coerce_arguments(value: Any) -> list[str]:
     if value is None:
         return []
@@ -130,7 +145,9 @@ def coerce_premium_insights(raw: dict | None) -> PremiumInsights | None:
     for item in raw.get("form_bars") or []:
         if isinstance(item, dict) and item.get("team"):
             try:
-                form_bars.append(FormBarItem.model_validate(item))
+                bar = FormBarItem.model_validate(item)
+                if bar.wins + bar.draws + bar.losses > 0:
+                    form_bars.append(bar)
             except ValidationError:
                 continue
     key_stats = []
@@ -170,6 +187,8 @@ def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
         normalized["coefficient"] = _coerce_float(normalized["coefficient"])
     if normalized.get("probability_percent") is not None:
         normalized["probability_percent"] = _coerce_int(normalized["probability_percent"])
+    if normalized.get("confidence") is not None:
+        normalized["confidence"] = _coerce_confidence(normalized["confidence"])
     if "arguments" in normalized:
         normalized["arguments"] = _coerce_arguments(normalized["arguments"])
 

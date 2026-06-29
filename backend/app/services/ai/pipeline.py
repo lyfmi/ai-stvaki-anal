@@ -16,6 +16,8 @@ from app.services.ai.prompts.synthesis import (
     SYNTHESIS_USER_TEMPLATE,
 )
 from app.services.ai.prompts.vision import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
+from app.services.ai.image_prepare import prepare_vision_image
+from app.services.ai.odds_resolver import anchor_teams_in_recommendation, apply_odds_policy
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
 from app.services.ai.search_enricher import SearchEnricher
@@ -87,8 +89,9 @@ MOCK_POSTMATCH_SYNTHESIS = {
 
 VISION_REPAIR_PROMPT = """Return ONLY valid JSON with keys:
 sport, league, home_team, away_team, match_datetime, market_type, available_outcomes,
-screenshot_notes, search_queries, parse_confidence, datetime_on_screenshot, odds_on_screenshot, match_status_hint.
-Extract team names and match datetime from the screenshot. Odds optional."""
+screenshot_notes, search_queries, parse_confidence, datetime_on_screenshot, odds_on_screenshot,
+match_status_hint, final_score, winner.
+Extract ONLY teams visible in the cropped image. Never substitute other teams. Copy odds exactly."""
 
 
 class VisionExtractor:
@@ -100,18 +103,15 @@ class VisionExtractor:
     ) -> VisionPayload:
         if settings.ai_mock:
             return VisionPayload.model_validate(MOCK_VISION)
-        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "jpg"
-        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
-            ext, "image/jpeg"
-        )
+        prepared_bytes, mime = prepare_vision_image(image_bytes)
         try:
             data = await self.client.vision_json(
-                image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime, model=model
+                prepared_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime, model=model
             )
             return VisionPayload.model_validate(data)
         except (ValidationError, RuntimeError):
             data = await self.client.vision_json(
-                image_bytes,
+                prepared_bytes,
                 VISION_SYSTEM_PROMPT,
                 f"{VISION_USER_PROMPT}\n\n{VISION_REPAIR_PROMPT}",
                 mime_type=mime,
@@ -251,6 +251,10 @@ class Synthesizer:
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk
         result = apply_post_match_overrides(result, vision=vision, ctx=ctx)
+        result = anchor_teams_in_recommendation(
+            result, vision.home_team, vision.away_team, user_lang=user_lang
+        )
+        result = apply_odds_policy(result, vision=vision, search=search)
         return result
 
     async def synthesize_match_of_day(
@@ -293,6 +297,10 @@ class Synthesizer:
         result.analysis_mode = ctx.analysis_mode
         result.match_status_label = ctx.match_status_label
         result = apply_post_match_overrides(result, ctx=ctx)
+        home = str(match.get("home_team", ""))
+        away = str(match.get("away_team", ""))
+        result = anchor_teams_in_recommendation(result, home, away, user_lang=user_lang)
+        result = apply_odds_policy(result, search=search, home=home, away=away)
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk
         elif match.get("kickoff_msk"):
