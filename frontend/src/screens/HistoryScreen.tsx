@@ -49,7 +49,10 @@ export function HistoryScreen({ apiCall, t, lang, onOpenResult }: HistoryScreenP
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {list.map((item) => (
+          {list.map((item) => {
+            const isPostMatch =
+              item.analysis_mode === "post_match" || item.is_betting_recommendation === false;
+            return (
             <button
               key={item.id}
               type="button"
@@ -61,15 +64,27 @@ export function HistoryScreen({ apiCall, t, lang, onOpenResult }: HistoryScreenP
                   {item.recommendation || "—"}
                 </span>
                 <span className="text-[10px] text-textMuted">
-                  {formatDate(item.created_at)} · x{item.coefficient ?? "—"}
+                  {formatDate(item.created_at)}
+                  {isPostMatch
+                    ? ` · ${t.history_finished}`
+                    : ` · x${item.coefficient ?? "—"}`}
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0 ml-3">
-                <span className="text-xs text-accent font-medium">{item.probability_percent}%</span>
+                {isPostMatch ? (
+                  <span className="text-[10px] uppercase font-medium text-textMuted px-2 py-0.5 rounded border border-borderSubtle">
+                    {t.history_finished}
+                  </span>
+                ) : (
+                  <span className="text-xs text-accent font-medium">
+                    {item.probability_percent != null ? `${item.probability_percent}%` : "—"}
+                  </span>
+                )}
                 <ArrowRight className="w-4 h-4 text-textMuted" />
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -43,7 +43,13 @@ def _best_premium(row: AiAnalysis):
     return None
 
 
+def _result_meta(row: AiAnalysis) -> tuple[str | None, str | None]:
+    raw = row.raw_ai_response or {}
+    return raw.get("final_score"), raw.get("winner")
+
+
 def analysis_to_out(row: AiAnalysis) -> AnalysisOut:
+    final_score, winner = _result_meta(row)
     return AnalysisOut(
         id=row.id,
         recommendation=row.recommendation,
@@ -59,6 +65,8 @@ def analysis_to_out(row: AiAnalysis) -> AnalysisOut:
         match_datetime_msk=row.match_datetime_msk,
         is_betting_recommendation=row.is_betting_recommendation,
         source_type=row.source_type or "screenshot",
+        final_score=final_score,
+        winner=winner,
     )
 
 

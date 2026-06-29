@@ -17,15 +17,22 @@ VISION_USER_PROMPT = """Analyze this betting screenshot. Return JSON only:
   "parse_confidence": "high|medium|low|failed",
   "datetime_on_screenshot": true,
   "odds_on_screenshot": true,
-  "match_status_hint": "upcoming|live|finished|unknown"
+  "match_status_hint": "upcoming|live|finished|unknown",
+  "final_score": "e.g. 2:1 or null if not visible",
+  "winner": "winning team/player name or Draw/null"
 }
 
 Rules:
 - PRIMARY extraction: home_team, away_team, match date and time (most important)
+- FINISHED MATCH: if final score, FT, "finished", "ended", or settled result is visible:
+  - match_status_hint MUST be "finished"
+  - final_score = visible score (e.g. "2:1", "3-0")
+  - winner = winning side name, or "Draw"/"Ничья" for draw
+  - odds_on_screenshot may be false (past matches often show result not odds)
 - Odds/coefficients are OPTIONAL — if not visible set odds_on_screenshot=false and available_outcomes=[]
 - datetime_on_screenshot: true ONLY if date/time of the match is clearly visible on screenshot
 - match_datetime: ISO 8601 with timezone if visible, else null
 - match_status_hint: "finished" if score/final/FT visible; "live" if live/in-play; "upcoming" if future; else "unknown"
-- search_queries: 1-2 English queries for kickoff time MSK, team form, odds (if missing on screenshot)
+- search_queries: 1-2 English queries — for finished matches use "result score", for upcoming use kickoff/odds
 - If screenshot is unreadable set parse_confidence to "failed"
 """

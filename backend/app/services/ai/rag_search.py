@@ -49,9 +49,13 @@ def build_rag_queries_for_fixture(match: dict) -> list[str]:
     away = str(match.get("away_team", "")).strip()
     league = str(match.get("league", "")).strip() or None
     pair = f"{home} vs {away}"
+    odds = [
+        f"{pair} 1win betting odds coefficient",
+        f"{pair} 1win коэффициент",
+    ]
     base = [
-        f"{pair} preview prediction odds",
+        f"{pair} preview prediction",
         f"{pair} betting analysis",
     ]
     rag = build_rag_match_queries(home, away, league=league)
-    return merge_search_queries(base, rag, limit=6)
+    return merge_search_queries(odds, base, rag, limit=6)

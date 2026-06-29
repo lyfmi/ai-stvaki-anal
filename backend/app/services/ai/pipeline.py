@@ -6,11 +6,12 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.schemas import AnalysisResult, SearchPayload, VisionPayload
 from app.services.ai.match_context import resolve_match_context, resolve_match_context_from_fixture
-from app.services.ai.normalize import parse_analysis_result
+from app.services.ai.normalize import apply_post_match_overrides, parse_analysis_result
 from app.services.ai.prompts.synthesis import (
     COMPACT_SYNTHESIS_SYSTEM_PROMPT,
     MATCH_OF_DAY_COMPACT_TEMPLATE,
     MATCH_OF_DAY_SYNTHESIS_TEMPLATE,
+    POST_MATCH_COMPACT_TEMPLATE,
     SYNTHESIS_SYSTEM_PROMPT,
     SYNTHESIS_USER_TEMPLATE,
 )
@@ -78,6 +79,8 @@ MOCK_POSTMATCH_SYNTHESIS = {
     "match_status_label": "Матч завершён",
     "match_datetime_msk": "27.06.2026 18:00 МСК",
     "is_betting_recommendation": False,
+    "final_score": "1:2",
+    "winner": "Chelsea",
     "premium_insights": MOCK_PREMATCH_SYNTHESIS["premium_insights"],
 }
 
@@ -206,16 +209,34 @@ class Synthesizer:
 
         mock = MOCK_PREMATCH_SYNTHESIS if ctx.analysis_mode != "post_match" else MOCK_POSTMATCH_SYNTHESIS
 
-        user_prompt = SYNTHESIS_USER_TEMPLATE.format(
-            lang=user_lang,
-            match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
-            vision_json=json.dumps(vision.model_dump(), ensure_ascii=False),
-            search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
-            analysis_mode=ctx.analysis_mode,
-            match_status_label=ctx.match_status_label,
-            match_datetime_msk=ctx.match_datetime_msk or "",
-        )
-        result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
+        if ctx.analysis_mode == "post_match":
+            compact_prompt = POST_MATCH_COMPACT_TEMPLATE.format(
+                lang=user_lang,
+                home=vision.home_team or "",
+                away=vision.away_team or "",
+                match_status_label=ctx.match_status_label,
+                final_score=vision.final_score or "unknown",
+                winner=vision.winner or "unknown",
+                search_bullets=_search_bullets(search),
+            )
+            data = await self.client.text_json(
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+                compact_prompt,
+                model=model,
+                max_tokens=settings.groq_max_tokens,
+            )
+            result = parse_analysis_result(data)
+        else:
+            user_prompt = SYNTHESIS_USER_TEMPLATE.format(
+                lang=user_lang,
+                match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
+                vision_json=json.dumps(vision.model_dump(), ensure_ascii=False),
+                search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
+                analysis_mode=ctx.analysis_mode,
+                match_status_label=ctx.match_status_label,
+                match_datetime_msk=ctx.match_datetime_msk or "",
+            )
+            result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
         if search.search_status == "failed":
             result.confidence = "low" if result.confidence == "high" else result.confidence
         if not result.match_status_label:
@@ -229,6 +250,7 @@ class Synthesizer:
         result.analysis_mode = ctx.analysis_mode
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk
+        result = apply_post_match_overrides(result, vision=vision, ctx=ctx)
         return result
 
     async def synthesize_match_of_day(
@@ -247,6 +269,7 @@ class Synthesizer:
             league=match.get("league", "Football"),
             kickoff=match.get("kickoff_msk") or ctx.match_datetime_msk or "",
             status=ctx.match_status_label,
+            analysis_mode=ctx.analysis_mode,
             search_bullets=_search_bullets(search),
         )
         try:
@@ -264,11 +287,12 @@ class Synthesizer:
                 search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
                 match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
             )
-            result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS, model=model)
+            mock = MOCK_PREMATCH_SYNTHESIS if ctx.analysis_mode != "post_match" else MOCK_POSTMATCH_SYNTHESIS
+            result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
 
         result.analysis_mode = ctx.analysis_mode
         result.match_status_label = ctx.match_status_label
-        result.is_betting_recommendation = ctx.analysis_mode != "post_match"
+        result = apply_post_match_overrides(result, ctx=ctx)
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk
         elif match.get("kickoff_msk"):

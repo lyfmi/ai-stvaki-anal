@@ -250,17 +250,19 @@ def resolve_match_context(
         kickoff = _extract_datetime_from_search(search, home, away)
 
     now = now_msk()
-    mode = _resolve_mode_from_kickoff(kickoff, now)
 
-    if kickoff is None:
-        if force_pre_match:
-            mode = "pre_match"
-        elif vision.match_status_hint == "finished" or _search_indicates_finished(search, home, away):
-            mode = "post_match"
-        elif vision.match_status_hint == "live" or _search_indicates_live(search, home, away):
-            mode = "live"
-        elif vision.match_status_hint == "upcoming":
-            mode = "pre_match"
+    if vision.match_status_hint == "finished" or (vision.final_score and vision.final_score.strip()):
+        mode = "post_match"
+    elif kickoff is not None:
+        mode = _resolve_mode_from_kickoff(kickoff, now)
+    elif force_pre_match:
+        mode = "pre_match"
+    elif _search_indicates_finished(search, home, away):
+        mode = "post_match"
+    elif vision.match_status_hint == "live" or _search_indicates_live(search, home, away):
+        mode = "live"
+    else:
+        mode = "pre_match"
 
     datetime_msk: str | None = None
     if kickoff is not None:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react";
+import { PostMatchResult } from "../components/PostMatchResult";
 import { AdvancedSection, AnalyticsCharts, LockedContent } from "../components/PremiumSection";
 import { SecondaryButton } from "../components/ui/PrimaryButton";
 import { resolveDisplayStatus } from "../utils/matchStatus";
@@ -110,6 +111,8 @@ export function ResultScreen({
     is_betting_recommendation,
     analysis_mode,
     premium_insights,
+    final_score,
+    winner,
   } = data;
 
   const displayStatus = resolveDisplayStatus(
@@ -126,7 +129,7 @@ export function ResultScreen({
     risk?.toLowerCase() === "low"
       ? "text-success border-success/30 bg-successMuted"
       : risk?.toLowerCase() === "high"
-        ? "text-danger border-danger/30 bg-danger/5"
+        ? "text-danger border-danger/30 bg-dangerMuted"
         : "text-textMuted border-borderSubtle bg-surfaceElevated";
 
   const price = settings?.unlimited_price_amount || "4900";
@@ -141,11 +144,11 @@ export function ResultScreen({
     priceLabel,
   };
 
-  const hasPremiumContent =
-    premium_insights ||
-    (argsList?.length ?? 0) > 0 ||
-    explanation ||
-    (premium_insights?.advanced_arguments?.length ?? 0) > 0;
+  const hasPremiumCharts =
+    premium_insights &&
+    ((premium_insights.form_bars?.length ?? 0) > 0 ||
+      (premium_insights.key_stats?.length ?? 0) > 0 ||
+      premium_insights.h2h);
 
   const statusBadgeClass = isPostMatch
     ? "border-textMuted/30 bg-surfaceElevated text-textMuted"
@@ -155,68 +158,79 @@ export function ResultScreen({
 
   return (
     <div className="flex flex-col gap-5 screen-enter">
-      <h2 className="text-lg font-semibold text-textPrimary">{t.result_title}</h2>
+      <h2 className="text-lg font-semibold text-textPrimary">
+        {isPostMatch ? t.result_match_finished : t.result_title}
+      </h2>
 
-      {(match_status_label || match_datetime_msk) && (
-        <div className="flex flex-wrap gap-2">
-          {displayStatus.label && (
-            <span
-              className={`text-[10px] uppercase font-medium px-2.5 py-1 rounded-lg border ${statusBadgeClass}`}
-            >
-              {displayStatus.label}
-            </span>
-          )}
-          {match_datetime_msk && (
-            <span className="text-[10px] uppercase font-medium px-2.5 py-1 rounded-lg border border-borderSubtle bg-surfaceElevated text-textMuted">
-              {t.result_match_time}: {match_datetime_msk}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* FREE: prognosis + coef + probability only */}
-      <div className="p-5 bg-surface border border-borderSubtle rounded-containerLg flex flex-col gap-4">
-        <div>
-          <span className="text-[10px] text-textMuted uppercase tracking-wider">
-            {isPostMatch ? t.result_match_finished : t.result_bet}
-          </span>
-          <p className="text-xl font-semibold text-textPrimary mt-1">{recommendation || "—"}</p>
-        </div>
-
-        {showBettingStats && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-surfaceElevated rounded-xl">
-              <span className="text-[10px] text-textMuted">{t.result_coef}</span>
-              <p className="text-lg font-semibold text-accent mt-0.5">
-                {coefficient != null ? `x${coefficient}` : "—"}
-              </p>
+      {isPostMatch ? (
+        <PostMatchResult
+          t={t}
+          recommendation={recommendation}
+          finalScore={final_score}
+          winner={winner}
+          matchDatetimeMsk={match_datetime_msk}
+          statusLabel={displayStatus.label}
+          explanation={explanation}
+          arguments={argsList}
+        />
+      ) : (
+        <>
+          {(match_status_label || match_datetime_msk) && (
+            <div className="flex flex-wrap gap-2">
+              {displayStatus.label && (
+                <span
+                  className={`text-[10px] uppercase font-medium px-2.5 py-1 rounded-lg border ${statusBadgeClass}`}
+                >
+                  {displayStatus.label}
+                </span>
+              )}
+              {match_datetime_msk && (
+                <span className="text-[10px] uppercase font-medium px-2.5 py-1 rounded-lg border border-borderSubtle bg-surfaceElevated text-textMuted">
+                  {t.result_match_time}: {match_datetime_msk}
+                </span>
+              )}
             </div>
-            <div className="p-3 bg-surfaceElevated rounded-xl">
-              <span className="text-[10px] text-textMuted">{t.result_probability}</span>
-              <p className="text-lg font-semibold text-success mt-0.5">
-                {probability_percent != null ? `${probability_percent}%` : "—"}
-              </p>
+          )}
+
+          <div className="p-5 bg-surface border border-borderSubtle rounded-containerLg flex flex-col gap-4">
+            <div>
+              <span className="text-[10px] text-textMuted uppercase tracking-wider">{t.result_bet}</span>
+              <p className="text-xl font-semibold text-textPrimary mt-1">{recommendation || "—"}</p>
             </div>
-          </div>
-        )}
 
-        {isUnlimited && (
-          <div className="flex gap-2">
-            <span className={`flex-1 py-2 px-3 rounded-xl border text-center text-[10px] uppercase font-medium ${riskClass}`}>
-              {t.result_risk}: {risk || "—"}
-            </span>
-            <span className="flex-1 py-2 px-3 rounded-xl border border-borderSubtle bg-surfaceElevated text-center text-[10px] uppercase text-textMuted">
-              {t.result_confidence}: {confidence || "—"}
-            </span>
-          </div>
-        )}
-      </div>
+            {showBettingStats && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-surfaceElevated rounded-xl">
+                  <span className="text-[10px] text-textMuted">{t.result_coef}</span>
+                  <p className="text-lg font-semibold text-accent mt-0.5">
+                    {coefficient != null ? `x${coefficient}` : "—"}
+                  </p>
+                </div>
+                <div className="p-3 bg-surfaceElevated rounded-xl">
+                  <span className="text-[10px] text-textMuted">{t.result_probability}</span>
+                  <p className="text-lg font-semibold text-success mt-0.5">
+                    {probability_percent != null ? `${probability_percent}%` : "—"}
+                  </p>
+                </div>
+              </div>
+            )}
 
-      {hasPremiumContent &&
-        (isUnlimited ? (
-          <div className="flex flex-col gap-4">
-            <AnalyticsCharts t={t} premium={premium_insights} />
-            {(argsList?.length > 0 || explanation) && (
+            {isUnlimited && (
+              <div className="flex gap-2">
+                <span
+                  className={`flex-1 py-2 px-3 rounded-xl border text-center text-[10px] uppercase font-medium ${riskClass}`}
+                >
+                  {t.result_risk}: {risk || "—"}
+                </span>
+                <span className="flex-1 py-2 px-3 rounded-xl border border-borderSubtle bg-surfaceElevated text-center text-[10px] uppercase text-textMuted">
+                  {t.result_confidence}: {confidence || "—"}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {(argsList?.length > 0 || explanation) &&
+            (isUnlimited ? (
               <div className="p-4 bg-surface border border-borderSubtle rounded-containerLg">
                 {argsList?.length > 0 && (
                   <ul className="flex flex-col gap-2 m-0 p-0 list-none mb-3">
@@ -235,51 +249,46 @@ export function ResultScreen({
                   </p>
                 )}
               </div>
-            )}
-            <AdvancedSection
-              t={t}
-              items={premium_insights?.advanced_arguments}
-              isUnlimited
-              onBuyUnlimited={handlePurchase}
-              purchaseLoading={purchaseLoading}
-              priceLabel={priceLabel}
-            />
-          </div>
-        ) : (
-          <LockedContent {...lockedProps} title={t.premium_locked_title} desc={t.premium_locked_desc}>
-            <AnalyticsCharts t={t} premium={premium_insights} embedded />
+            ) : (
+              <LockedContent {...lockedProps} title={t.premium_locked_args_title} desc={t.premium_locked_args_desc}>
+                {argsList?.length > 0 && (
+                  <ul className="flex flex-col gap-2 m-0 p-0 list-none">
+                    {argsList.map((arg: string, i: number) => (
+                      <li key={i} className="text-xs text-textPrimary/90 flex gap-2">
+                        <span className="text-accent">·</span>
+                        {arg}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {explanation && <p className="text-xs text-textMuted mt-3">{explanation}</p>}
+              </LockedContent>
+            ))}
 
-            {argsList?.length > 0 && (
-              <ul className="flex flex-col gap-2 m-0 p-0 list-none mb-3 mt-4">
-                <span className="text-[10px] text-textMuted uppercase">{t.result_args}</span>
-                {argsList.map((arg: string, i: number) => (
-                  <li key={i} className="text-xs text-textPrimary/90 flex gap-2">
-                    <span className="text-accent">·</span>
-                    {arg}
-                  </li>
-                ))}
-              </ul>
-            )}
+          {hasPremiumCharts &&
+            (isUnlimited ? (
+              <div className="flex flex-col gap-4">
+                <AnalyticsCharts t={t} premium={premium_insights} />
+                <AdvancedSection
+                  t={t}
+                  items={premium_insights?.advanced_arguments}
+                  isUnlimited
+                  onBuyUnlimited={handlePurchase}
+                  purchaseLoading={purchaseLoading}
+                  priceLabel={priceLabel}
+                />
+              </div>
+            ) : (
+              <LockedContent {...lockedProps} title={t.premium_locked_title} desc={t.premium_locked_desc}>
+                <AnalyticsCharts t={t} premium={premium_insights} embedded />
+              </LockedContent>
+            ))}
+        </>
+      )}
 
-            {explanation && (
-              <p className="text-xs text-textMuted leading-relaxed border-t border-borderSubtle pt-3">
-                {explanation}
-              </p>
-            )}
-
-            {premium_insights?.advanced_arguments?.length > 0 && (
-              <ul className="flex flex-col gap-1.5 m-0 p-0 list-none mt-3 border-t border-borderSubtle pt-3">
-                <span className="text-[10px] text-textMuted uppercase">{t.result_advanced}</span>
-                {premium_insights.advanced_arguments.map((item: string, i: number) => (
-                  <li key={i} className="text-xs text-textPrimary/90 flex gap-2">
-                    <span className="text-accent">+</span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </LockedContent>
-        ))}
+      {isPostMatch && hasPremiumCharts && isUnlimited && (
+        <AnalyticsCharts t={t} premium={premium_insights} />
+      )}
 
       {errorMsg && <p className="text-xs text-danger text-center">{errorMsg}</p>}
 
@@ -287,7 +296,9 @@ export function ResultScreen({
         <ArrowLeft className="w-4 h-4" /> {t.result_back}
       </SecondaryButton>
 
-      <p className="text-[10px] text-textMuted text-center leading-relaxed">{t.result_disclaimer}</p>
+      <p className="text-[10px] text-textMuted text-center leading-relaxed">
+        {isPostMatch ? t.result_post_disclaimer : t.result_disclaimer}
+      </p>
     </div>
   );
 }

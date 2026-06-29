@@ -205,3 +205,26 @@ def parse_analysis_result(data: dict[str, Any]) -> AnalysisResult:
         raise RuntimeError(
             f"AI synthesis missing fields: {', '.join(str(item) for item in missing)}"
         ) from exc
+
+
+def apply_post_match_overrides(
+    result: AnalysisResult,
+    *,
+    vision=None,
+    ctx=None,
+) -> AnalysisResult:
+    mode = (ctx.analysis_mode if ctx else None) or result.analysis_mode
+    if mode != "post_match":
+        return result
+    result.analysis_mode = "post_match"
+    result.is_betting_recommendation = False
+    result.coefficient = None
+    result.probability_percent = None
+    if ctx and ctx.match_status_label:
+        result.match_status_label = ctx.match_status_label
+    if vision is not None:
+        if not result.final_score and getattr(vision, "final_score", None):
+            result.final_score = vision.final_score
+        if not result.winner and getattr(vision, "winner", None):
+            result.winner = vision.winner
+    return result

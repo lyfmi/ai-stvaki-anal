@@ -53,6 +53,8 @@ class VisionPayload(BaseModel):
     datetime_on_screenshot: bool = False
     odds_on_screenshot: bool = False
     match_status_hint: str = "unknown"
+    final_score: str | None = None
+    winner: str | None = None
 
 
 class SearchResultItem(BaseModel):
@@ -109,6 +111,8 @@ class AnalysisResult(BaseModel):
     match_datetime_msk: str | None = None
     is_betting_recommendation: bool = True
     premium_insights: PremiumInsights | None = None
+    final_score: str | None = None
+    winner: str | None = None
 
 
 class AnalysisOut(BaseModel):
@@ -126,6 +130,8 @@ class AnalysisOut(BaseModel):
     match_datetime_msk: str | None = None
     is_betting_recommendation: bool | None = True
     source_type: str | None = "screenshot"
+    final_score: str | None = None
+    winner: str | None = None
 
     model_config = {"from_attributes": True}
 
