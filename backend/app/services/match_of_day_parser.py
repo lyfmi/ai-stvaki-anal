@@ -44,7 +44,17 @@ DATE_DMY = re.compile(
 )
 ISO_DATE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 LIVE_WINDOW_MINUTES = 130
-LIVE_MARKERS = ("live", "in-play", "in play", "идёт", "minute", " ht ", "match day", "live score", "live coverage")
+STRONG_LIVE_MARKERS = ("in-play", "in play", "идёт", "live now", "match live", "live coverage")
+FINISHED_MARKERS = (
+    "final score",
+    "full time",
+    "ft ",
+    "match report",
+    "highlights",
+    "live score",
+    "recap",
+    "ended",
+)
 
 SPORT_MARKERS = (
     "world cup",
@@ -240,11 +250,22 @@ def _parse_kickoff_from_text(text: str, reference: datetime) -> datetime | None:
         return None
 
 
+def _fixture_day_before_today(blob: str, reference: datetime) -> bool:
+    day, month, year = _extract_date(blob, reference)
+    try:
+        fixture_day = datetime(year, month, day, tzinfo=reference.tzinfo)
+    except ValueError:
+        return False
+    return fixture_day.date() < reference.date()
+
+
 def _is_live_blob(blob: str) -> bool:
     lower = blob.lower()
     if any(marker in lower for marker in ("wikipedia", "britannica", "preview", "ticketmaster", "buy ")):
         return False
-    return any(marker in lower for marker in LIVE_MARKERS)
+    if any(marker in lower for marker in FINISHED_MARKERS):
+        return False
+    return any(marker in lower for marker in STRONG_LIVE_MARKERS)
 
 
 def _score_fixture(home: str, away: str, kickoff: datetime | None, blob: str, now: datetime) -> float:
@@ -259,8 +280,6 @@ def _score_fixture(home: str, away: str, kickoff: datetime | None, blob: str, no
         score += 50
     if "world cup" in lower:
         score += 35
-    if "espn" in lower and "live" in lower:
-        score += 20
 
     is_live = _is_live_blob(blob)
     if kickoff:
@@ -275,13 +294,15 @@ def _score_fixture(home: str, away: str, kickoff: datetime | None, blob: str, no
     else:
         return -1
 
-    if is_live:
+    if is_live and kickoff:
         score += 25
     return score
 
 
 def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
     """Best-effort fixture extraction without LLM."""
+    from app.services.debug_agent_log import agent_log
+
     now = now_msk()
     candidates: list[tuple[float, dict]] = []
 
@@ -296,10 +317,29 @@ def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
             if not home or not away:
                 continue
 
-            kickoff = _parse_kickoff_from_text(f"{item.title} {item.snippet}", now)
-            is_live = _is_live_blob(f"{item.title} {item.snippet}")
-            if kickoff is None and is_live:
-                kickoff = now - timedelta(minutes=55)
+            text_blob = f"{item.title} {item.snippet}"
+            if _fixture_day_before_today(text_blob, now):
+                # #region agent log
+                agent_log(
+                    location="match_of_day_parser.py:pick",
+                    message="skip past fixture date",
+                    data={"home": home, "away": away, "title": item.title[:80]},
+                    hypothesis_id="B",
+                )
+                # #endregion
+                continue
+
+            kickoff = _parse_kickoff_from_text(text_blob, now)
+            if kickoff is None:
+                # #region agent log
+                agent_log(
+                    location="match_of_day_parser.py:pick",
+                    message="skip missing kickoff",
+                    data={"home": home, "away": away, "title": item.title[:80]},
+                    hypothesis_id="A",
+                )
+                # #endregion
+                continue
 
             score = _score_fixture(home, away, kickoff, blob, now)
             if score < 10 or kickoff is None:
@@ -329,4 +369,19 @@ def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
         return None
 
     candidates.sort(key=lambda x: x[0], reverse=True)
-    return candidates[0][1]
+    winner = candidates[0][1]
+    # #region agent log
+    agent_log(
+        location="match_of_day_parser.py:pick",
+        message="picked fixture",
+        data={
+            "home": winner["home_team"],
+            "away": winner["away_team"],
+            "kickoff_msk": winner["kickoff_msk"],
+            "is_live": winner["is_live"],
+            "score": candidates[0][0],
+        },
+        hypothesis_id="C",
+    )
+    # #endregion
+    return winner

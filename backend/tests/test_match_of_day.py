@@ -34,6 +34,28 @@ def test_pick_fixture_from_fifa_snippet():
     assert picked["away_team"] == "Japan"
 
 
+def test_espn_live_score_archive_not_picked():
+    results = [
+        SearchResultItem(
+            query="q",
+            title="South Africa vs. Canada (Jun 28, 2026) Live Score - ESPN",
+            snippet="Final score and match highlights",
+            url="https://espn.com",
+        ),
+        SearchResultItem(
+            query="q",
+            title="Brazil v Japan | FIFA World Cup Round of 32",
+            snippet="Monday 29 June 2026 Houston Stadium GMT 17:00",
+            url="https://fifa.com",
+        ),
+    ]
+    picked = pick_fixture_from_search(results)
+    assert picked is not None
+    assert picked["home_team"] == "Brazil"
+    assert picked["away_team"] == "Japan"
+    assert picked["is_live"] is False
+
+
 def test_normalize_allows_live_match():
     svc = MatchOfDayService()
     kickoff = now_msk() - timedelta(minutes=45)

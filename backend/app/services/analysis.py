@@ -106,6 +106,16 @@ class AnalysisService:
         except ValidationError as e:
             raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
         except RuntimeError as e:
+            # #region agent log
+            from app.services.debug_agent_log import agent_log
+
+            agent_log(
+                location="analysis.py:predict_match_of_day",
+                message="pipeline runtime error",
+                data={"error": str(e), "match": match_dict.get("home_team")},
+                hypothesis_id="F",
+            )
+            # #endregion
             raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
 
         search = pipeline_result["search"]

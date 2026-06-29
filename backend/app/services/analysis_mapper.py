@@ -26,7 +26,9 @@ def _filter_arguments(args: list[str] | None) -> list[str] | None:
 def _best_arguments(row: AiAnalysis) -> list[str] | None:
     stored = _filter_arguments(row.arguments or []) or []
     raw = (row.raw_ai_response or {}).get("arguments") if row.raw_ai_response else None
-    raw_list = _filter_arguments([str(a) for a in raw if str(a).strip()]) if isinstance(raw, list) else []
+    raw_list = (
+        _filter_arguments([str(a) for a in raw if str(a).strip()]) if isinstance(raw, list) else None
+    ) or []
     if len(raw_list) > len(stored):
         return raw_list
     return stored or None
