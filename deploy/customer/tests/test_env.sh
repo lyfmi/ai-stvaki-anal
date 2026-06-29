@@ -45,7 +45,8 @@ test_write_env_content() {
 
   grep -q "BOT_TOKEN=${BOT_TOKEN}" "$tmp" || return 1
   grep -q "PUBLIC_BASE_URL=https://tgbot.test.example" "$tmp" || return 1
-  grep -q "NOUS_API_KEY=${NOUS_API_KEY_DEFAULT}" "$tmp" || return 1
+  grep -q "GROQ_API_BASE=${GROQ_API_BASE_DEFAULT}" "$tmp" || return 1
+  grep -q "GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL_DEFAULT}" "$tmp" || return 1
   grep -q "SEARCH_PROVIDER=searxng" "$tmp" || return 1
   grep -q "ADMIN_TELEGRAM_IDS=123456789" "$tmp" || return 1
   rm -f "$tmp"

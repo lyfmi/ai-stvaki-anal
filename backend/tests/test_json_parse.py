@@ -1,4 +1,4 @@
-from app.services.ai.providers.nous_client import (
+from app.services.ai.providers.json_utils import (
     parse_ai_json,
     parse_json_response,
     _repair_malformed_json,

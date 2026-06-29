@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 
-# Nous API — shared free-tier key (заказчик использует API разработчика)
-NOUS_API_KEY_DEFAULT="sk-nous-f6WANRjXyoJkdQ4mBTEuesU6I42294pb"
-NOUS_API_BASE_DEFAULT="https://inference-api.nousresearch.com/v1"
-NOUS_MODEL_DEFAULT="stepfun/step-3.7-flash:free"
+# Groq API — set GROQ_API_KEY before install or in generated .env
+GROQ_API_KEY_DEFAULT=""
+GROQ_API_BASE_DEFAULT="https://api.groq.com/openai/v1"
+GROQ_DEFAULT_MODEL_DEFAULT="llama-3.3-70b-versatile"
+GROQ_VISION_MODEL_DEFAULT="meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_MAX_TOKENS_DEFAULT="1024"
 
 write_env_file() {
   local env_path="$1"
@@ -37,17 +39,19 @@ DATABASE_URL=postgresql+asyncpg://ai_bot:${postgres_password}@postgres:5432/ai_b
 # Redis
 REDIS_URL=redis://redis:6379/0
 
-# AI — Nous Inference API
-NOUS_API_KEY=${NOUS_API_KEY_DEFAULT}
-NOUS_API_BASE=${NOUS_API_BASE_DEFAULT}
-NOUS_MODEL=${NOUS_MODEL_DEFAULT}
+# AI — Groq API
+GROQ_API_KEY=${GROQ_API_KEY:-${GROQ_API_KEY_DEFAULT}}
+GROQ_API_BASE=${GROQ_API_BASE_DEFAULT}
+GROQ_DEFAULT_MODEL=${GROQ_DEFAULT_MODEL_DEFAULT}
+GROQ_VISION_MODEL=${GROQ_VISION_MODEL_DEFAULT}
+GROQ_MAX_TOKENS=${GROQ_MAX_TOKENS_DEFAULT}
 AI_MOCK=false
-AI_PIPELINE_VERSION=v3-matchday
+AI_PIPELINE_VERSION=v4-groq
 
-# Search
+# Search (RAG)
 SEARCH_PROVIDER=searxng
-SEARCH_MAX_QUERIES=2
-SEARCH_MAX_RESULTS=5
+SEARCH_MAX_QUERIES=6
+SEARCH_MAX_RESULTS=8
 SEARCH_CACHE_TTL_SECONDS=7200
 SEARXNG_BASE_URL=http://searxng:8080
 

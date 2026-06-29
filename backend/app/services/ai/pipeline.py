@@ -5,8 +5,8 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas import AnalysisResult, SearchPayload, VisionPayload
-from app.services.ai.match_context import build_smart_search_queries, resolve_match_context, resolve_match_context_from_fixture
-from app.services.ai.normalize import normalize_analysis_data, parse_analysis_result
+from app.services.ai.match_context import resolve_match_context, resolve_match_context_from_fixture
+from app.services.ai.normalize import parse_analysis_result
 from app.services.ai.prompts.synthesis import (
     COMPACT_SYNTHESIS_SYSTEM_PROMPT,
     MATCH_OF_DAY_COMPACT_TEMPLATE,
@@ -15,7 +15,8 @@ from app.services.ai.prompts.synthesis import (
     SYNTHESIS_USER_TEMPLATE,
 )
 from app.services.ai.prompts.vision import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
-from app.services.ai.providers.nous_client import NousClient
+from app.services.ai.providers.groq_client import GroqClient
+from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
 from app.services.ai.search_enricher import SearchEnricher
 
 
@@ -89,9 +90,11 @@ Extract team names and match datetime from the screenshot. Odds optional."""
 
 class VisionExtractor:
     def __init__(self) -> None:
-        self.client = NousClient()
+        self.client = GroqClient()
 
-    async def extract(self, image_bytes: bytes, filename: str = "photo.jpg") -> VisionPayload:
+    async def extract(
+        self, image_bytes: bytes, filename: str = "photo.jpg", *, model: str | None = None
+    ) -> VisionPayload:
         if settings.ai_mock:
             return VisionPayload.model_validate(MOCK_VISION)
         ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else "jpg"
@@ -99,7 +102,9 @@ class VisionExtractor:
             ext, "image/jpeg"
         )
         try:
-            data = await self.client.vision_json(image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime)
+            data = await self.client.vision_json(
+                image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime, model=model
+            )
             return VisionPayload.model_validate(data)
         except (ValidationError, RuntimeError):
             data = await self.client.vision_json(
@@ -107,6 +112,7 @@ class VisionExtractor:
                 VISION_SYSTEM_PROMPT,
                 f"{VISION_USER_PROMPT}\n\n{VISION_REPAIR_PROMPT}",
                 mime_type=mime,
+                model=model,
             )
             return VisionPayload.model_validate(data)
 
@@ -142,13 +148,22 @@ def _search_bullets(search: SearchPayload, limit: int = 4) -> str:
 
 class Synthesizer:
     def __init__(self) -> None:
-        self.client = NousClient()
+        self.client = GroqClient()
 
-    async def _call_synthesis(self, user_prompt: str, *, mock_data: dict | None = None) -> AnalysisResult:
+    async def _call_synthesis(
+        self,
+        user_prompt: str,
+        *,
+        mock_data: dict | None = None,
+        model: str | None = None,
+    ) -> AnalysisResult:
         if settings.ai_mock and mock_data:
             return AnalysisResult.model_validate(mock_data)
 
-        data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, user_prompt, max_tokens=8192)
+        token_limit = settings.groq_max_tokens
+        data = await self.client.text_json(
+            SYNTHESIS_SYSTEM_PROMPT, user_prompt, model=model, max_tokens=token_limit
+        )
         try:
             result = parse_analysis_result(data)
         except (ValidationError, RuntimeError):
@@ -156,15 +171,19 @@ class Synthesizer:
                 f"{user_prompt}\n\nPrevious invalid JSON:\n{json.dumps(data, ensure_ascii=False)}\n\n"
                 f"{SYNTHESIS_REPAIR_PROMPT}"
             )
-            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, repair_prompt, max_tokens=8192)
+            data = await self.client.text_json(
+                SYNTHESIS_SYSTEM_PROMPT, repair_prompt, model=model, max_tokens=token_limit
+            )
             result = parse_analysis_result(data)
 
         if _looks_truncated(data) or not (result.recommendation or "").strip():
             compact_prompt = (
                 f"{user_prompt}\n\nPrevious response was truncated. Return compact but COMPLETE JSON. "
-                "Use at most 3 short arguments. Fill premium_insights.form_bars and key_stats."
+                "Use at most 2 short arguments. Fill premium_insights.form_bars and key_stats."
             )
-            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, compact_prompt, max_tokens=8192)
+            data = await self.client.text_json(
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT, compact_prompt, model=model, max_tokens=token_limit
+            )
             result = parse_analysis_result(data)
 
         if not (result.recommendation or "").strip():
@@ -179,6 +198,7 @@ class Synthesizer:
         *,
         match_context=None,
         force_pre_match: bool = False,
+        model: str | None = None,
     ) -> AnalysisResult:
         ctx = match_context or resolve_match_context(
             vision, search, user_lang=user_lang, force_pre_match=force_pre_match
@@ -190,12 +210,12 @@ class Synthesizer:
             lang=user_lang,
             match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
             vision_json=json.dumps(vision.model_dump(), ensure_ascii=False),
-            search_json=json.dumps(search.model_dump(), ensure_ascii=False),
+            search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
             analysis_mode=ctx.analysis_mode,
             match_status_label=ctx.match_status_label,
             match_datetime_msk=ctx.match_datetime_msk or "",
         )
-        result = await self._call_synthesis(user_prompt, mock_data=mock)
+        result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
         if search.search_status == "failed":
             result.confidence = "low" if result.confidence == "high" else result.confidence
         if not result.match_status_label:
@@ -216,9 +236,9 @@ class Synthesizer:
         match: dict,
         search: SearchPayload,
         user_lang: str,
+        *,
+        model: str | None = None,
     ) -> AnalysisResult:
-        from app.services.debug_agent_log import agent_log
-
         ctx = resolve_match_context_from_fixture(match, user_lang=user_lang)
         compact_prompt = MATCH_OF_DAY_COMPACT_TEMPLATE.format(
             lang=user_lang,
@@ -231,35 +251,20 @@ class Synthesizer:
         )
         try:
             data = await self.client.text_json(
-                COMPACT_SYNTHESIS_SYSTEM_PROMPT, compact_prompt, max_tokens=4096
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+                compact_prompt,
+                model=model,
+                max_tokens=settings.groq_max_tokens,
             )
             result = parse_analysis_result(data)
-            # #region agent log
-            agent_log(
-                location="pipeline.py:synthesize_match_of_day",
-                message="compact synthesis ok",
-                data={"finish": data.get("_finish_reason"), "rec": (result.recommendation or "")[:40]},
-                hypothesis_id="H2",
-                run_id="predict-fix",
-            )
-            # #endregion
-        except (ValidationError, RuntimeError) as exc:
-            # #region agent log
-            agent_log(
-                location="pipeline.py:synthesize_match_of_day",
-                message="compact synthesis failed, fallback full",
-                data={"error": str(exc)[:200]},
-                hypothesis_id="H2",
-                run_id="predict-fix",
-            )
-            # #endregion
+        except (ValidationError, RuntimeError):
             user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
                 lang=user_lang,
                 match_json=json.dumps(match, ensure_ascii=False),
                 search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
                 match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
             )
-            result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS)
+            result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS, model=model)
 
         result.analysis_mode = ctx.analysis_mode
         result.match_status_label = ctx.match_status_label
@@ -277,18 +282,25 @@ class AiAnalysisPipeline:
         self.search_enricher = SearchEnricher()
         self.synthesizer = Synthesizer()
 
-    async def analyze_screenshot(self, image_bytes: bytes, user_lang: str, filename: str = "photo.jpg") -> dict:
+    async def analyze_screenshot(
+        self,
+        image_bytes: bytes,
+        user_lang: str,
+        filename: str = "photo.jpg",
+        *,
+        model: str | None = None,
+    ) -> dict:
         latencies: dict[str, int] = {}
         total_start = time.perf_counter()
 
         t0 = time.perf_counter()
-        vision = await self.vision_extractor.extract(image_bytes, filename=filename)
+        vision = await self.vision_extractor.extract(image_bytes, filename=filename, model=model)
         latencies["vision"] = int((time.perf_counter() - t0) * 1000)
 
         if vision.parse_confidence == "failed":
             raise UnreadableScreenshotError("Screenshot is unreadable")
 
-        queries = build_smart_search_queries(vision)
+        queries = build_rag_queries_for_vision(vision)
         t0 = time.perf_counter()
         search = await self.search_enricher.enrich(queries)
         latencies["search"] = int((time.perf_counter() - t0) * 1000)
@@ -297,7 +309,7 @@ class AiAnalysisPipeline:
 
         t0 = time.perf_counter()
         result = await self.synthesizer.synthesize(
-            vision, search, user_lang, match_context=match_context
+            vision, search, user_lang, match_context=match_context, model=model
         )
         latencies["synthesis"] = int((time.perf_counter() - t0) * 1000)
         latencies["total"] = int((time.perf_counter() - total_start) * 1000)
@@ -311,23 +323,18 @@ class AiAnalysisPipeline:
             "latency_ms": latencies,
         }
 
-    async def analyze_match_of_day(self, match: dict, user_lang: str) -> dict:
+    async def analyze_match_of_day(self, match: dict, user_lang: str, *, model: str | None = None) -> dict:
         latencies: dict[str, int] = {}
         total_start = time.perf_counter()
 
-        home = match.get("home_team", "")
-        away = match.get("away_team", "")
-        queries = [
-            f"{home} vs {away} preview prediction",
-            f"{home} vs {away} odds lineups",
-        ]
+        queries = build_rag_queries_for_fixture(match)
 
         t0 = time.perf_counter()
         search = await self.search_enricher.enrich(queries)
         latencies["search"] = int((time.perf_counter() - t0) * 1000)
 
         t0 = time.perf_counter()
-        result = await self.synthesizer.synthesize_match_of_day(match, search, user_lang)
+        result = await self.synthesizer.synthesize_match_of_day(match, search, user_lang, model=model)
         latencies["synthesis"] = int((time.perf_counter() - t0) * 1000)
         latencies["total"] = int((time.perf_counter() - total_start) * 1000)
 

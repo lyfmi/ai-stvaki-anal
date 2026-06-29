@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -13,6 +13,7 @@ from app.schemas import (
     UserStatusOut,
 )
 from app.services.admin import AdminService
+from app.services.ai.models import GROQ_ALLOWED_MODELS, GROQ_VISION_MODELS, resolve_model
 from app.services.analysis import AnalysisService
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
@@ -83,21 +84,39 @@ async def check_subscription(user=Depends(_get_user), db: AsyncSession = Depends
     return await AdminService(db).enrich_user(user)
 
 
+@router.get("/ai/models")
+async def list_ai_models(user=Depends(_get_user)):
+    _ = user
+    return {
+        "models": sorted(GROQ_ALLOWED_MODELS),
+        "vision_models": sorted(GROQ_VISION_MODELS),
+        "default": resolve_model(None),
+        "vision_default": resolve_model(None, vision=True),
+    }
+
+
 @router.post("/analyze", response_model=AnalysisOut)
 async def analyze_screenshot(
     screenshot: UploadFile = File(...),
+    model: str | None = Query(None, description="Groq model id"),
     user=Depends(_get_user),
     db: AsyncSession = Depends(get_db),
     telegram_id: int = Depends(require_internal_auth),
 ):
     if telegram_id is None:
         raise HTTPException(status_code=401, detail="X-Telegram-User-Id required")
+    try:
+        resolved_model = resolve_model(model, vision=True)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     content = await screenshot.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
     svc = AnalysisService(db)
     try:
-        analysis = await svc.analyze(user, content, screenshot.filename or "photo.jpg", telegram_id)
+        analysis = await svc.analyze(
+            user, content, screenshot.filename or "photo.jpg", telegram_id, model=resolved_model
+        )
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:
@@ -118,15 +137,20 @@ async def get_match_of_day(
 
 @router.post("/match-of-day/predict", response_model=AnalysisDetailOut)
 async def predict_match_of_day(
+    model: str | None = Query(None, description="Groq model id"),
     user=Depends(_get_user),
     db: AsyncSession = Depends(get_db),
     telegram_id: int = Depends(require_internal_auth),
 ):
     if telegram_id is None:
         raise HTTPException(status_code=401, detail="X-Telegram-User-Id required")
+    try:
+        resolved_model = resolve_model(model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     svc = AnalysisService(db)
     try:
-        analysis = await svc.predict_match_of_day(user, telegram_id)
+        analysis = await svc.predict_match_of_day(user, telegram_id, model=resolved_model)
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except ValueError as e:

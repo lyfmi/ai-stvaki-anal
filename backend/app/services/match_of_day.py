@@ -17,7 +17,8 @@ from app.services.ai.match_context import (
     now_msk,
     parse_kickoff_msk,
 )
-from app.services.ai.providers.nous_client import NousClient, parse_ai_json
+from app.services.ai.providers.groq_client import GroqClient
+from app.services.ai.providers.json_utils import parse_ai_json
 from app.services.ai.search_enricher import SearchEnricher
 from app.services.match_of_day_parser import pick_fixture_from_search
 
@@ -70,7 +71,7 @@ EMPTY_MATCH = MatchOfDayOut(
 class MatchOfDayService:
     def __init__(self) -> None:
         self.search = SearchEnricher()
-        self.client = NousClient()
+        self.client = GroqClient()
 
     def _cache_key(self) -> str:
         return f"{CACHE_PREFIX}:{msk_date_key()}"
@@ -132,14 +133,13 @@ class MatchOfDayService:
             search_json=search_json,
         )
         try:
-            content, reasoning, _ = await self.client.chat_completion(
+            content, _, _ = await self.client.chat_completion(
                 [
                     {"role": "system", "content": PICK_SYSTEM},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=2048,
             )
-            data = parse_ai_json(content, reasoning)
+            data = parse_ai_json(content)
             normalized = self._normalize_match(data)
             if normalized:
                 return normalized
@@ -148,14 +148,13 @@ class MatchOfDayService:
 
         try:
             repair_prompt = f"{user_prompt}\n\nInvalid or missing fields. {PICK_REPAIR}"
-            content, reasoning, _ = await self.client.chat_completion(
+            content, _, _ = await self.client.chat_completion(
                 [
                     {"role": "system", "content": PICK_SYSTEM},
                     {"role": "user", "content": repair_prompt},
                 ],
-                max_tokens=1024,
             )
-            data = parse_ai_json(content, reasoning)
+            data = parse_ai_json(content)
             return self._normalize_match(data)
         except Exception as exc:
             logger.warning("Match of day AI repair failed: %s", exc)

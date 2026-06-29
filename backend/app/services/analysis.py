@@ -45,7 +45,13 @@ class AnalysisService:
             user.funnel_state = "ACTIVE"
 
     async def analyze(
-        self, user: User, image_bytes: bytes, filename: str, telegram_id: int
+        self,
+        user: User,
+        image_bytes: bytes,
+        filename: str,
+        telegram_id: int,
+        *,
+        model: str | None = None,
     ) -> AiAnalysis:
         await self._ensure_can_analyze(user, telegram_id)
 
@@ -56,34 +62,9 @@ class AnalysisService:
         image_path = storage_dir / f"{image_id}{ext}"
         image_path.write_bytes(image_bytes)
 
-        # #region agent log
-        from app.services.debug_agent_log import agent_log
-
-        try:
-            from PIL import Image
-            import io
-
-            with Image.open(io.BytesIO(image_bytes)) as img:
-                agent_log(
-                    location="analysis.py:analyze",
-                    message="screenshot received",
-                    data={"bytes": len(image_bytes), "w": img.width, "h": img.height, "filename": filename},
-                    hypothesis_id="H4",
-                    run_id="crop-fix",
-                )
-        except Exception:
-            agent_log(
-                location="analysis.py:analyze",
-                message="screenshot received (no dims)",
-                data={"bytes": len(image_bytes), "filename": filename},
-                hypothesis_id="H4",
-                run_id="crop-fix",
-            )
-        # #endregion
-
         try:
             pipeline_result = await self.pipeline.analyze_screenshot(
-                image_bytes, user.language, filename=filename
+                image_bytes, user.language, filename=filename, model=model
             )
         except UnreadableScreenshotError as e:
             raise ValueError(str(e)) from e
@@ -117,7 +98,9 @@ class AnalysisService:
         await self.db.flush()
         return analysis
 
-    async def predict_match_of_day(self, user: User, telegram_id: int) -> AiAnalysis:
+    async def predict_match_of_day(
+        self, user: User, telegram_id: int, *, model: str | None = None
+    ) -> AiAnalysis:
         await self._ensure_can_analyze(user, telegram_id)
 
         match = await self.match_of_day.get_match()
@@ -127,20 +110,13 @@ class AnalysisService:
         match_dict = match.model_dump(exclude={"cached"})
 
         try:
-            pipeline_result = await self.pipeline.analyze_match_of_day(match_dict, user.language)
+            pipeline_result = await self.pipeline.analyze_match_of_day(
+                match_dict, user.language, model=model
+            )
         except ValidationError as e:
             raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
         except RuntimeError as e:
-            # #region agent log
-            from app.services.debug_agent_log import agent_log
-
-            agent_log(
-                location="analysis.py:predict_match_of_day",
-                message="pipeline runtime error",
-                data={"error": str(e), "match": match_dict.get("home_team")},
-                hypothesis_id="F",
-            )
-            # #endregion
+            logger.warning("Match-of-day predict failed: %s", e)
             raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
 
         search = pipeline_result["search"]

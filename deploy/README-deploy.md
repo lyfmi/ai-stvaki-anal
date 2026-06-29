@@ -15,7 +15,7 @@ cd /opt && git clone <repo> ai-bot-stavki || cd ai-bot-stavki && git pull
 
 # 2. Create .env from .env.example with real secrets
 cp .env.example .env
-nano .env   # BOT_TOKEN, NOUS_API_KEY, INTERNAL_API_SECRET, POSTGRES_PASSWORD
+nano .env   # BOT_TOKEN, GROQ_API_KEY, INTERNAL_API_SECRET, POSTGRES_PASSWORD
 
 # 3. Start services
 docker compose up -d --build

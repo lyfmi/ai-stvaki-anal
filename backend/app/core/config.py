@@ -13,14 +13,16 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://ai_bot:change-me-postgres@postgres:5432/ai_bet_bot"
     redis_url: str = "redis://redis:6379/0"
 
-    nous_api_key: str = ""
-    nous_api_base: str = "https://inference-api.nousresearch.com/v1"
-    nous_model: str = "stepfun/step-3.7-flash:free"
+    groq_api_key: str = ""
+    groq_api_base: str = "https://api.groq.com/openai/v1"
+    groq_default_model: str = "llama-3.3-70b-versatile"
+    groq_vision_model: str = "meta-llama/llama-4-scout-17b-16e-instruct"
+    groq_max_tokens: int = 1024
     ai_mock: bool = False
-    ai_pipeline_version: str = "v3-matchday"
+    ai_pipeline_version: str = "v4-groq"
 
     search_provider: str = "searxng"
-    search_max_queries: int = 4
+    search_max_queries: int = 6
     search_max_results: int = 8
     search_cache_ttl_seconds: int = 7200
     searxng_base_url: str = "http://searxng:8080"
@@ -31,7 +33,7 @@ class Settings(BaseSettings):
 
     reports_chat_id: str = ""
 
-    daily_attempts_limit: int = 10
+    daily_attempts_limit: int = 100
     storage_path: str = "/app/storage"
 
     @property
