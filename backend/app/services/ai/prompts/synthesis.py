@@ -79,3 +79,21 @@ Give a pre-match betting recommendation for this featured match.
 is_betting_recommendation MUST be true. analysis_mode MUST be "pre_match".
 Fill premium_insights from search data.
 Return the same JSON shape as standard analysis."""
+
+MATCH_OF_DAY_COMPACT_TEMPLATE = """User language: {lang}
+Match: {home} vs {away}
+League: {league}
+Kickoff: {kickoff}
+Status: {status}
+
+Facts:
+{search_bullets}
+
+Return ONE compact JSON only. Max 2 short arguments.
+analysis_mode=pre_match, is_betting_recommendation=true.
+Fill premium_insights.form_bars (2 teams) and key_stats (2 items)."""
+
+COMPACT_SYNTHESIS_SYSTEM_PROMPT = """Sports betting analyst.
+Return ONLY one valid JSON object in the content field. No reasoning. No markdown.
+Required keys: recommendation, market, coefficient, probability_percent, risk, arguments, confidence, explanation, analysis_mode, match_status_label, match_datetime_msk, is_betting_recommendation, premium_insights.
+recommendation must be non-empty."""

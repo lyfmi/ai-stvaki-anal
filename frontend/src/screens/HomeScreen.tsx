@@ -80,6 +80,39 @@ export function HomeScreen({
     setCropFile(null);
     setSelectedFile(cropped);
     setPreviewUrl(URL.createObjectURL(cropped));
+    void runAnalysis(cropped);
+  };
+
+  const runAnalysis = async (file: File) => {
+    if (!canAnalyze) return;
+
+    setIsProcessing(true);
+    setProcessStep(1);
+    setErrorMsg(null);
+
+    const visionTimer = setTimeout(() => setProcessStep(2), 4500);
+    const searchTimer = setTimeout(() => setProcessStep(3), 9000);
+
+    try {
+      const data = await analyzeScreenshot(token, file);
+      clearTimeout(visionTimer);
+      clearTimeout(searchTimer);
+      await onRefreshStatus();
+      setIsProcessing(false);
+      window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("success");
+      onAnalysisComplete(data);
+    } catch (err: any) {
+      clearTimeout(visionTimer);
+      clearTimeout(searchTimer);
+      setErrorMsg(err.message || "Analysis failed");
+      setIsProcessing(false);
+      window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("error");
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedFile || !canAnalyze) return;
+    await runAnalysis(selectedFile);
   };
 
   const handleCropCancel = () => {
@@ -99,33 +132,6 @@ export function HomeScreen({
       setErrorMsg(err.message);
     } finally {
       setPurchaseLoading(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!selectedFile || !canAnalyze) return;
-
-    setIsProcessing(true);
-    setProcessStep(1);
-    setErrorMsg(null);
-
-    const visionTimer = setTimeout(() => setProcessStep(2), 4500);
-    const searchTimer = setTimeout(() => setProcessStep(3), 9000);
-
-    try {
-      const data = await analyzeScreenshot(token, selectedFile);
-      clearTimeout(visionTimer);
-      clearTimeout(searchTimer);
-      await onRefreshStatus();
-      setIsProcessing(false);
-      window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("success");
-      onAnalysisComplete(data);
-    } catch (err: any) {
-      clearTimeout(visionTimer);
-      clearTimeout(searchTimer);
-      setErrorMsg(err.message || "Analysis failed");
-      setIsProcessing(false);
-      window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("error");
     }
   };
 

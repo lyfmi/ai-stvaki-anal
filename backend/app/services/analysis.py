@@ -56,6 +56,31 @@ class AnalysisService:
         image_path = storage_dir / f"{image_id}{ext}"
         image_path.write_bytes(image_bytes)
 
+        # #region agent log
+        from app.services.debug_agent_log import agent_log
+
+        try:
+            from PIL import Image
+            import io
+
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                agent_log(
+                    location="analysis.py:analyze",
+                    message="screenshot received",
+                    data={"bytes": len(image_bytes), "w": img.width, "h": img.height, "filename": filename},
+                    hypothesis_id="H4",
+                    run_id="crop-fix",
+                )
+        except Exception:
+            agent_log(
+                location="analysis.py:analyze",
+                message="screenshot received (no dims)",
+                data={"bytes": len(image_bytes), "filename": filename},
+                hypothesis_id="H4",
+                run_id="crop-fix",
+            )
+        # #endregion
+
         try:
             pipeline_result = await self.pipeline.analyze_screenshot(
                 image_bytes, user.language, filename=filename

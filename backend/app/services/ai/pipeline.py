@@ -8,6 +8,8 @@ from app.schemas import AnalysisResult, SearchPayload, VisionPayload
 from app.services.ai.match_context import build_smart_search_queries, resolve_match_context, resolve_match_context_from_fixture
 from app.services.ai.normalize import normalize_analysis_data, parse_analysis_result
 from app.services.ai.prompts.synthesis import (
+    COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+    MATCH_OF_DAY_COMPACT_TEMPLATE,
     MATCH_OF_DAY_SYNTHESIS_TEMPLATE,
     SYNTHESIS_SYSTEM_PROMPT,
     SYNTHESIS_USER_TEMPLATE,
@@ -128,6 +130,16 @@ def _looks_truncated(data: dict) -> bool:
     return len(rec) < 3
 
 
+def _search_bullets(search: SearchPayload, limit: int = 4) -> str:
+    lines: list[str] = []
+    for item in search.results[:limit]:
+        snippet = (item.snippet or "").replace("\n", " ")[:120]
+        title = (item.title or "")[:80]
+        if title or snippet:
+            lines.append(f"- {title}: {snippet}".strip())
+    return "\n".join(lines) if lines else "- limited data"
+
+
 class Synthesizer:
     def __init__(self) -> None:
         self.client = NousClient()
@@ -205,14 +217,50 @@ class Synthesizer:
         search: SearchPayload,
         user_lang: str,
     ) -> AnalysisResult:
+        from app.services.debug_agent_log import agent_log
+
         ctx = resolve_match_context_from_fixture(match, user_lang=user_lang)
-        user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
+        compact_prompt = MATCH_OF_DAY_COMPACT_TEMPLATE.format(
             lang=user_lang,
-            match_json=json.dumps(match, ensure_ascii=False),
-            search_json=json.dumps(search.model_dump(), ensure_ascii=False),
-            match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
+            home=match.get("home_team", ""),
+            away=match.get("away_team", ""),
+            league=match.get("league", "Football"),
+            kickoff=match.get("kickoff_msk") or ctx.match_datetime_msk or "",
+            status=ctx.match_status_label,
+            search_bullets=_search_bullets(search),
         )
-        result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS)
+        try:
+            data = await self.client.text_json(
+                COMPACT_SYNTHESIS_SYSTEM_PROMPT, compact_prompt, max_tokens=4096
+            )
+            result = parse_analysis_result(data)
+            # #region agent log
+            agent_log(
+                location="pipeline.py:synthesize_match_of_day",
+                message="compact synthesis ok",
+                data={"finish": data.get("_finish_reason"), "rec": (result.recommendation or "")[:40]},
+                hypothesis_id="H2",
+                run_id="predict-fix",
+            )
+            # #endregion
+        except (ValidationError, RuntimeError) as exc:
+            # #region agent log
+            agent_log(
+                location="pipeline.py:synthesize_match_of_day",
+                message="compact synthesis failed, fallback full",
+                data={"error": str(exc)[:200]},
+                hypothesis_id="H2",
+                run_id="predict-fix",
+            )
+            # #endregion
+            user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
+                lang=user_lang,
+                match_json=json.dumps(match, ensure_ascii=False),
+                search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
+                match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
+            )
+            result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS)
+
         result.analysis_mode = ctx.analysis_mode
         result.match_status_label = ctx.match_status_label
         result.is_betting_recommendation = ctx.analysis_mode != "post_match"

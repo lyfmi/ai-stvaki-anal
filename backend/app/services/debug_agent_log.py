@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEBUG_LOG = Path("/home/kasi/Docker/ai-bot-stavki/.cursor/debug-328e66.log")
 SESSION_ID = "328e66"
@@ -26,6 +29,7 @@ def agent_log(
         "data": data,
         "timestamp": int(time.time() * 1000),
     }
+    logger.info("agent_debug %s", json.dumps(payload, ensure_ascii=False))
     try:
         DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
         with DEBUG_LOG.open("a", encoding="utf-8") as fh:
