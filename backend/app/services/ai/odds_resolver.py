@@ -157,7 +157,17 @@ def anchor_teams_in_recommendation(
     rec_l = rec.lower()
     allowed = {home.lower(), away.lower()}
     # Common wrong picks when user cropped Brazil-Japan
-    for wrong in ("france", "франция", "germany", "германия", "argentina", "аргентина"):
+    for wrong in (
+        "france",
+        "франция",
+        "франции",
+        "францию",
+        "germany",
+        "германия",
+        "германии",
+        "argentina",
+        "аргентина",
+    ):
         if wrong in rec_l and wrong not in allowed:
             rec = rec.replace(wrong, home if side_hint_home(rec_l, home, away) else away)
             rec_l = rec.lower()

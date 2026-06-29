@@ -12,12 +12,19 @@ from app.services.ai.prompts.synthesis import (
     MATCH_OF_DAY_COMPACT_TEMPLATE,
     MATCH_OF_DAY_SYNTHESIS_TEMPLATE,
     POST_MATCH_COMPACT_TEMPLATE,
+    SCREENSHOT_PREMATCH_COMPACT_TEMPLATE,
     SYNTHESIS_SYSTEM_PROMPT,
     SYNTHESIS_USER_TEMPLATE,
 )
 from app.services.ai.prompts.vision import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 from app.services.ai.image_prepare import prepare_vision_image
 from app.services.ai.odds_resolver import anchor_teams_in_recommendation, apply_odds_policy
+from app.services.ai.vision_guard import (
+    VISION_STRICT_REPAIR,
+    enforce_authoritative_teams,
+    filter_search_for_teams,
+    vision_needs_retry,
+)
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
 from app.services.ai.search_enricher import SearchEnricher
@@ -108,12 +115,22 @@ class VisionExtractor:
             data = await self.client.vision_json(
                 prepared_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime, model=model
             )
-            return VisionPayload.model_validate(data)
+            vision = VisionPayload.model_validate(data)
+            if vision_needs_retry(vision):
+                data = await self.client.vision_json(
+                    prepared_bytes,
+                    VISION_SYSTEM_PROMPT,
+                    f"{VISION_USER_PROMPT}\n\n{VISION_STRICT_REPAIR}",
+                    mime_type=mime,
+                    model=model,
+                )
+                vision = VisionPayload.model_validate(data)
+            return vision
         except (ValidationError, RuntimeError):
             data = await self.client.vision_json(
                 prepared_bytes,
                 VISION_SYSTEM_PROMPT,
-                f"{VISION_USER_PROMPT}\n\n{VISION_REPAIR_PROMPT}",
+                f"{VISION_USER_PROMPT}\n\n{VISION_REPAIR_PROMPT}\n\n{VISION_STRICT_REPAIR}",
                 mime_type=mime,
                 model=model,
             )
@@ -227,16 +244,42 @@ class Synthesizer:
             )
             result = parse_analysis_result(data)
         else:
-            user_prompt = SYNTHESIS_USER_TEMPLATE.format(
-                lang=user_lang,
-                match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
-                vision_json=json.dumps(vision.model_dump(), ensure_ascii=False),
-                search_json=json.dumps({"results": [r.model_dump() for r in search.results[:6]]}, ensure_ascii=False),
-                analysis_mode=ctx.analysis_mode,
-                match_status_label=ctx.match_status_label,
-                match_datetime_msk=ctx.match_datetime_msk or "",
+            odds_json = json.dumps(
+                [o.model_dump() for o in vision.available_outcomes],
+                ensure_ascii=False,
             )
-            result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
+            compact_prompt = SCREENSHOT_PREMATCH_COMPACT_TEMPLATE.format(
+                lang=user_lang,
+                home=vision.home_team or "",
+                away=vision.away_team or "",
+                league=vision.league or "",
+                kickoff=ctx.match_datetime_msk or vision.match_datetime or "",
+                status=ctx.match_status_label,
+                odds_json=odds_json,
+                search_bullets=_search_bullets(search),
+            )
+            try:
+                data = await self.client.text_json(
+                    COMPACT_SYNTHESIS_SYSTEM_PROMPT,
+                    compact_prompt,
+                    model=model,
+                    max_tokens=settings.groq_max_tokens,
+                )
+                result = parse_analysis_result(data)
+            except (ValidationError, RuntimeError):
+                user_prompt = SYNTHESIS_USER_TEMPLATE.format(
+                    lang=user_lang,
+                    match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
+                    vision_json=json.dumps(vision.model_dump(), ensure_ascii=False),
+                    search_json=json.dumps(
+                        {"results": [r.model_dump() for r in search.results[:6]]},
+                        ensure_ascii=False,
+                    ),
+                    analysis_mode=ctx.analysis_mode,
+                    match_status_label=ctx.match_status_label,
+                    match_datetime_msk=ctx.match_datetime_msk or "",
+                )
+                result = await self._call_synthesis(user_prompt, mock_data=mock, model=model)
         if search.search_status == "failed":
             result.confidence = "low" if result.confidence == "high" else result.confidence
         if not result.match_status_label:
@@ -252,6 +295,9 @@ class Synthesizer:
             result.match_datetime_msk = ctx.match_datetime_msk
         result = apply_post_match_overrides(result, vision=vision, ctx=ctx)
         result = anchor_teams_in_recommendation(
+            result, vision.home_team, vision.away_team, user_lang=user_lang
+        )
+        result = enforce_authoritative_teams(
             result, vision.home_team, vision.away_team, user_lang=user_lang
         )
         result = apply_odds_policy(result, vision=vision, search=search)
@@ -335,9 +381,16 @@ class AiAnalysisPipeline:
         queries = build_rag_queries_for_vision(vision)
         t0 = time.perf_counter()
         search = await self.search_enricher.enrich(queries)
+        search = filter_search_for_teams(search, vision.home_team, vision.away_team)
         latencies["search"] = int((time.perf_counter() - t0) * 1000)
 
         match_context = resolve_match_context(vision, search, user_lang=user_lang)
+        if vision.match_status_hint == "upcoming" and match_context.analysis_mode == "live":
+            from app.services.ai.match_context import STATUS_LABELS
+
+            match_context.analysis_mode = "pre_match"
+            lang_key = "en" if user_lang.startswith("en") else "ru"
+            match_context.match_status_label = STATUS_LABELS[lang_key]["pre_match"]
 
         t0 = time.perf_counter()
         result = await self.synthesizer.synthesize(
