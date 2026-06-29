@@ -24,7 +24,7 @@ class NousClient:
         max_tokens: int = 8192,
         temperature: float = 0.2,
         json_mode: bool = True,
-    ) -> str:
+    ) -> tuple[str | None, str | None, str]:
         if not self.api_key:
             raise RuntimeError("NOUS_API_KEY is not configured")
 
@@ -59,20 +59,20 @@ class NousClient:
 
         choice = choices[0]
         message = choice.get("message") or {}
-        raw = message.get("content")
+        content = message.get("content")
+        reasoning = message.get("reasoning")
+        finish_reason = str(choice.get("finish_reason") or "stop")
 
-        if not raw:
-            reasoning = message.get("reasoning")
-            if isinstance(reasoning, str) and reasoning.strip():
-                raw = reasoning
-            else:
-                finish = choice.get("finish_reason", "unknown")
-                raise RuntimeError(f"Empty AI response (finish_reason={finish})")
+        content_text = content.strip() if isinstance(content, str) and content.strip() else None
+        reasoning_text = reasoning.strip() if isinstance(reasoning, str) and reasoning.strip() else None
 
-        if choice.get("finish_reason") == "length":
+        if not content_text and not reasoning_text:
+            raise RuntimeError(f"Empty AI response (finish_reason={finish_reason})")
+
+        if finish_reason == "length":
             logger.warning("AI response truncated at %s tokens", max_tokens)
 
-        return raw
+        return content_text, reasoning_text, finish_reason
 
     async def vision_json(
         self,
@@ -91,34 +91,112 @@ class NousClient:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content},
         ]
-        raw = await self.chat_completion(messages, max_tokens=8192)
-        return parse_json_response(raw)
+        raw_content, raw_reasoning, _ = await self.chat_completion(messages, max_tokens=8192)
+        return parse_ai_json(raw_content, raw_reasoning)
 
-    async def text_json(self, system_prompt: str, user_prompt: str) -> dict:
+    async def text_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        max_tokens: int = 8192,
+    ) -> dict:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        raw = await self.chat_completion(messages, max_tokens=4096)
-        return parse_json_response(raw)
+        raw_content, raw_reasoning, finish_reason = await self.chat_completion(
+            messages, max_tokens=max_tokens
+        )
+        data = parse_ai_json(raw_content, raw_reasoning)
+        data["_finish_reason"] = finish_reason
+        return data
+
+
+def _strip_fences(text: str) -> str:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned)
+    return cleaned.strip()
+
+
+def _repair_malformed_json(text: str) -> str:
+    repaired = text.strip()
+    repaired = re.sub(
+        r'^\{\s*",\s*"\s*:',
+        '{"recommendation":',
+        repaired,
+    )
+    repaired = re.sub(
+        r'^\{\s*\\",\\"\s*:',
+        '{"recommendation":',
+        repaired,
+    )
+    return repaired
+
+
+def _json_candidates(text: str) -> list[str]:
+    cleaned = _strip_fences(text)
+    candidates = [_repair_malformed_json(cleaned)]
+
+    start = 0
+    while True:
+        start = cleaned.find("{", start)
+        if start == -1:
+            break
+        depth = 0
+        for index, char in enumerate(cleaned[start:], start):
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    fragment = cleaned[start : index + 1]
+                    candidates.append(_repair_malformed_json(fragment))
+                    candidates.append(fragment)
+                    break
+        start += 1
+
+    candidates.append(cleaned)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            unique.append(candidate)
+    return unique
 
 
 def parse_json_response(raw: str | None) -> dict:
     if not raw or not raw.strip():
         raise RuntimeError("Empty AI response")
 
-    text = raw.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\n?", "", text)
-        text = re.sub(r"\n?```$", "", text)
+    for candidate in _json_candidates(raw):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
 
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        for candidate in (match.group(), _repair_malformed_json(match.group())):
             try:
-                return json.loads(match.group())
+                return json.loads(candidate)
             except json.JSONDecodeError:
-                pass
-        raise RuntimeError("AI returned invalid JSON")
+                continue
+
+    raise RuntimeError("AI returned invalid JSON")
+
+
+def parse_ai_json(content: str | None, reasoning: str | None) -> dict:
+    last_error: RuntimeError | None = None
+    for source in (content, reasoning):
+        if not source:
+            continue
+        try:
+            return parse_json_response(source)
+        except RuntimeError as exc:
+            last_error = exc
+    raise last_error or RuntimeError("AI returned invalid JSON")

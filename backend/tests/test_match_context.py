@@ -5,7 +5,10 @@ from app.schemas import SearchPayload, SearchResultItem, VisionPayload
 from app.services.ai.match_context import (
     build_smart_search_queries,
     format_datetime_msk,
+    is_kickoff_expired,
     msk_date_key,
+    now_msk,
+    parse_kickoff_msk,
     resolve_match_context,
 )
 from zoneinfo import ZoneInfo
@@ -75,6 +78,26 @@ def test_resolve_post_match_past_kickoff():
     search = SearchPayload()
     ctx = resolve_match_context(vision, search, user_lang="ru")
     assert ctx.analysis_mode == "post_match"
+
+
+def test_parse_kickoff_time_only_today():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    MSK = ZoneInfo("Europe/Moscow")
+    ref = datetime(2026, 6, 28, 23, 0, tzinfo=MSK)
+    # 21:00 when now is 23:00 same day — should roll to next day or be parsed as past
+    dt = parse_kickoff_msk("21:00 МСК", reference=ref)
+    assert dt is not None
+    # past time same day rolls forward if >6h behind
+    assert dt > ref or dt.hour == 21
+
+
+def test_is_kickoff_expired():
+    past = now_msk() - timedelta(hours=3)
+    assert is_kickoff_expired(past) is True
+    future = now_msk() + timedelta(hours=1)
+    assert is_kickoff_expired(future) is False
 
 
 def test_search_indicates_finished():

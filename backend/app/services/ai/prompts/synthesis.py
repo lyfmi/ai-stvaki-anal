@@ -3,7 +3,7 @@ Use the screenshot data and web search results to produce analysis.
 Return ONE JSON object with EXACTLY these keys (same spelling):
 recommendation, market, coefficient, probability_percent, risk, arguments, confidence, explanation,
 analysis_mode, match_status_label, match_datetime_msk, is_betting_recommendation, premium_insights.
-No markdown. No extra keys. recommendation must be non-empty.
+No markdown. No reasoning text. No extra keys. recommendation must be non-empty.
 All datetimes shown to user must be in MSK (UTC+3) format like "28.06.2026 19:30 МСК".
 Never guarantee 100% success."""
 

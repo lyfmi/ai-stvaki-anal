@@ -1,6 +1,44 @@
 """Map AiAnalysis ORM rows to API schemas."""
 from app.models import AiAnalysis
-from app.schemas import AnalysisDetailOut, AnalysisOut, PremiumInsights
+from app.schemas import AnalysisDetailOut, AnalysisOut
+from app.services.ai.normalize import coerce_premium_insights
+
+
+def _is_truncated_argument(text: str) -> bool:
+    text = text.strip()
+    if len(text) < 20:
+        return False
+    if text[-1] in ".!?…":
+        return False
+    last_word = text.split()[-1] if text.split() else ""
+    if len(last_word) < 4:
+        return True
+    return text[-1].isalnum()
+
+
+def _filter_arguments(args: list[str] | None) -> list[str] | None:
+    if not args:
+        return None
+    cleaned = [a for a in args if a.strip() and not _is_truncated_argument(a)]
+    return cleaned or None
+
+
+def _best_arguments(row: AiAnalysis) -> list[str] | None:
+    stored = _filter_arguments(row.arguments or []) or []
+    raw = (row.raw_ai_response or {}).get("arguments") if row.raw_ai_response else None
+    raw_list = _filter_arguments([str(a) for a in raw if str(a).strip()]) if isinstance(raw, list) else []
+    if len(raw_list) > len(stored):
+        return raw_list
+    return stored or None
+
+
+def _best_premium(row: AiAnalysis):
+    premium = coerce_premium_insights(row.premium_payload)
+    if premium is not None:
+        return premium
+    if row.raw_ai_response:
+        return coerce_premium_insights(row.raw_ai_response.get("premium_insights"))
+    return None
 
 
 def analysis_to_out(row: AiAnalysis) -> AnalysisOut:
@@ -11,7 +49,7 @@ def analysis_to_out(row: AiAnalysis) -> AnalysisOut:
         probability_percent=row.probability_percent,
         risk=row.risk,
         confidence=row.confidence,
-        arguments=row.arguments,
+        arguments=_best_arguments(row),
         explanation=row.explanation,
         created_at=row.created_at,
         analysis_mode=row.analysis_mode,
@@ -23,12 +61,8 @@ def analysis_to_out(row: AiAnalysis) -> AnalysisOut:
 
 
 def analysis_to_detail(row: AiAnalysis) -> AnalysisDetailOut:
-    premium = None
-    if row.premium_payload:
-        try:
-            premium = PremiumInsights.model_validate(row.premium_payload)
-        except Exception:
-            premium = None
+    premium = _best_premium(row)
+
     base = analysis_to_out(row)
     return AnalysisDetailOut(
         **base.model_dump(),
@@ -56,3 +90,7 @@ def persist_analysis_fields(analysis: AiAnalysis, result) -> None:
     analysis.raw_ai_response = result.model_dump()
     if result.premium_insights:
         analysis.premium_payload = result.premium_insights.model_dump()
+    else:
+        coerced = coerce_premium_insights(result.model_dump().get("premium_insights"))
+        if coerced:
+            analysis.premium_payload = coerced.model_dump()

@@ -5,11 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import admin, auth, internal, user, webhooks
 from app.core.redis import close_redis
+from app.services.match_of_day import MatchOfDayService
+from app.services.match_of_day_refresh import start_match_of_day_refresh, stop_match_of_day_refresh
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await MatchOfDayService().refresh_cache()
+    start_match_of_day_refresh()
     yield
+    await stop_match_of_day_refresh()
     await close_redis()
 
 

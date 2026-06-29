@@ -1,3 +1,4 @@
+import logging
 import uuid
 from pathlib import Path
 
@@ -7,11 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models import AiAnalysis, User
-from app.services.ai.pipeline import AiAnalysisPipeline, UnreadableScreenshotError
+from app.schemas import SearchPayload, VisionPayload
+from app.services.ai.match_context import resolve_match_context
+from app.services.ai.pipeline import AiAnalysisPipeline, UnreadableScreenshotError, _looks_truncated
+from app.services.ai.normalize import coerce_premium_insights
 from app.services.analysis_mapper import analysis_to_detail, analysis_to_out, persist_analysis_fields
 from app.services.funnel import FunnelService
 from app.services.limits import AttemptsLimitService
 from app.services.match_of_day import MatchOfDayService
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -56,8 +62,15 @@ class AnalysisService:
             )
         except UnreadableScreenshotError as e:
             raise ValueError(str(e)) from e
-        except (RuntimeError, ValidationError) as e:
-            raise ValueError("AI analysis failed") from e
+        except ValidationError as e:
+            raise ValueError("Не удалось распознать скриншот") from e
+        except RuntimeError as e:
+            msg = str(e)
+            if "Vision" in msg or "vision" in msg:
+                raise ValueError("Не удалось прочитать скриншот") from e
+            if "JSON" in msg or "synthesis" in msg.lower():
+                raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
+            raise ValueError("Ошибка обработки, попробуйте ещё раз") from e
 
         vision = pipeline_result["vision"]
         search = pipeline_result["search"]
@@ -83,12 +96,17 @@ class AnalysisService:
         await self._ensure_can_analyze(user, telegram_id)
 
         match = await self.match_of_day.get_match()
+        if not match.home_team or match.home_team == "—":
+            raise ValueError("Нет актуального матча дня")
+
         match_dict = match.model_dump(exclude={"cached"})
 
         try:
             pipeline_result = await self.pipeline.analyze_match_of_day(match_dict, user.language)
-        except (RuntimeError, ValidationError) as e:
-            raise ValueError("AI analysis failed") from e
+        except ValidationError as e:
+            raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
+        except RuntimeError as e:
+            raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
 
         search = pipeline_result["search"]
         result = pipeline_result["result"]
@@ -122,7 +140,46 @@ class AnalysisService:
         result = await self.db.execute(
             select(AiAnalysis).where(AiAnalysis.id == analysis_id, AiAnalysis.user_id == user.id)
         )
-        return result.scalar_one_or_none()
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return await self.repair_if_needed(user, row)
+
+    async def repair_if_needed(self, user: User, analysis: AiAnalysis) -> AiAnalysis:
+        unlimited = user.has_unlimited or user.funnel_state == "UNLIMITED"
+        if not unlimited:
+            return analysis
+
+        raw = analysis.raw_ai_response or {}
+        premium = coerce_premium_insights(analysis.premium_payload) or coerce_premium_insights(
+            raw.get("premium_insights")
+        )
+        premium_incomplete = premium is None or not (
+            premium.form_bars or premium.key_stats or premium.h2h
+        )
+        if not _looks_truncated(raw) and not premium_incomplete:
+            return analysis
+
+        try:
+            if analysis.source_type == "match_of_day":
+                match = (analysis.vision_payload or {}).get("match_of_day") or {}
+                search = SearchPayload.model_validate(analysis.search_payload or {"results": []})
+                result = await self.pipeline.synthesizer.synthesize_match_of_day(
+                    match, search, user.language
+                )
+            else:
+                vision = VisionPayload.model_validate(analysis.vision_payload or {})
+                search = SearchPayload.model_validate(analysis.search_payload or {"results": []})
+                match_context = resolve_match_context(vision, search, user_lang=user.language)
+                result = await self.pipeline.synthesizer.synthesize(
+                    vision, search, user.language, match_context=match_context
+                )
+            persist_analysis_fields(analysis, result)
+            await self.db.flush()
+            logger.info("Repaired truncated analysis %s for user %s", analysis.id, user.id)
+        except Exception as exc:
+            logger.warning("Analysis repair failed for %s: %s", analysis.id, exc)
+        return analysis
 
     @staticmethod
     def to_out(row: AiAnalysis):

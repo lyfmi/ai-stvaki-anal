@@ -1,5 +1,18 @@
 import { API_BASE } from "./constants";
 
+export function formatApiError(detail: unknown, fallback = "Unknown error"): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: any) => d.msg || d.message || (typeof d === "string" ? d : JSON.stringify(d)))
+      .join(", ");
+  }
+  if (detail && typeof detail === "object" && "message" in detail) {
+    return String((detail as { message: string }).message);
+  }
+  return fallback;
+}
+
 export async function apiCall(
   endpoint: string,
   token: string | null,
@@ -20,7 +33,7 @@ export async function apiCall(
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(errData.detail || `HTTP Error ${response.status}`);
+    throw new Error(formatApiError(errData.detail, `HTTP Error ${response.status}`));
   }
 
   return response.json();
@@ -52,7 +65,7 @@ export async function analyzeScreenshot(token: string | null, file: File) {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ detail: "Analysis failed" }));
-    throw new Error(err.detail || `HTTP ${response.status}`);
+    throw new Error(formatApiError(err.detail, "Analysis failed"));
   }
   return response.json();
 }

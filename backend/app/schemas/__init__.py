@@ -143,8 +143,10 @@ class MatchOfDayOut(BaseModel):
     away_team: str
     league: str
     kickoff_msk: str
+    kickoff_at: str | None = None
     teaser: str
     cached: bool = False
+    is_live: bool = False
 
 
 class AdminStatsOut(BaseModel):

@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     ai_mock: bool = False
     ai_pipeline_version: str = "v3-matchday"
 
-    search_provider: str = "duckduckgo"
-    search_max_queries: int = 2
-    search_max_results: int = 5
+    search_provider: str = "searxng"
+    search_max_queries: int = 4
+    search_max_results: int = 8
     search_cache_ttl_seconds: int = 7200
     searxng_base_url: str = "http://searxng:8080"
 

@@ -3,6 +3,7 @@ import { AlertCircle, Crown, Upload, Zap } from "lucide-react";
 import { gsap } from "gsap";
 import { analyzeScreenshot } from "../api";
 import { MatchOfDayCard } from "../components/MatchOfDayCard";
+import { ImageCropper } from "../components/ImageCropper";
 import { ScreenHeader } from "../components/layout/ScreenHeader";
 import { PrimaryButton } from "../components/ui/PrimaryButton";
 import { ProcessingOverlay } from "../components/ui/ProcessingOverlay";
@@ -16,7 +17,7 @@ interface HomeScreenProps {
   statusInfo: any;
   settings: any;
   apiCall: (endpoint: string, options?: RequestInit) => Promise<any>;
-  onResult: (analysisId: string) => void;
+  onAnalysisComplete: (data: any) => void;
   onRefreshStatus: () => Promise<void>;
 }
 
@@ -27,17 +28,19 @@ export function HomeScreen({
   statusInfo,
   settings,
   apiCall,
-  onResult,
+  onAnalysisComplete,
   onRefreshStatus,
 }: HomeScreenProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadStep, setUploadStep] = useState<1 | 2 | 3>(1);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [matchPredicting, setMatchPredicting] = useState(false);
+  const [processStep, setProcessStep] = useState<1 | 2 | 3>(1);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
 
   const statusReady = Boolean(statusInfo);
   const isUnlimited =
@@ -68,10 +71,19 @@ export function HomeScreen({
     return () => ctx.revert();
   }, []);
 
-  const handleFileChange = (file: File) => {
+  const handleFileSelected = (file: File) => {
     setErrorMsg(null);
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    setCropFile(file);
+  };
+
+  const handleCropConfirm = (cropped: File) => {
+    setCropFile(null);
+    setSelectedFile(cropped);
+    setPreviewUrl(URL.createObjectURL(cropped));
+  };
+
+  const handleCropCancel = () => {
+    setCropFile(null);
   };
 
   const handlePurchase = async () => {
@@ -93,27 +105,55 @@ export function HomeScreen({
   const handleSubmit = async () => {
     if (!selectedFile || !canAnalyze) return;
 
-    setIsUploading(true);
-    setUploadStep(1);
+    setIsProcessing(true);
+    setProcessStep(1);
     setErrorMsg(null);
 
-    const visionTimer = setTimeout(() => setUploadStep(2), 4500);
-    const searchTimer = setTimeout(() => setUploadStep(3), 9000);
+    const visionTimer = setTimeout(() => setProcessStep(2), 4500);
+    const searchTimer = setTimeout(() => setProcessStep(3), 9000);
 
     try {
       const data = await analyzeScreenshot(token, selectedFile);
       clearTimeout(visionTimer);
       clearTimeout(searchTimer);
       await onRefreshStatus();
+      setIsProcessing(false);
       window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("success");
-      onResult(data.id);
+      onAnalysisComplete(data);
     } catch (err: any) {
       clearTimeout(visionTimer);
       clearTimeout(searchTimer);
       setErrorMsg(err.message || "Analysis failed");
-      setIsUploading(false);
+      setIsProcessing(false);
       window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("error");
     }
+  };
+
+  const handleMatchPredict = () => {
+    if (!canAnalyze) return;
+    setMatchPredicting(true);
+    setIsProcessing(true);
+    setProcessStep(2);
+    setErrorMsg(null);
+    const searchTimer = setTimeout(() => setProcessStep(3), 5000);
+
+    void apiCall("/user/match-of-day/predict", { method: "POST" })
+      .then(async (data) => {
+        clearTimeout(searchTimer);
+        if (!data?.id) throw new Error("Не удалось получить результат анализа");
+        await onRefreshStatus();
+        setIsProcessing(false);
+        setMatchPredicting(false);
+        window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("success");
+        onAnalysisComplete(data);
+      })
+      .catch((err: any) => {
+        clearTimeout(searchTimer);
+        setErrorMsg(err.message || "Ошибка анализа матча");
+        setIsProcessing(false);
+        setMatchPredicting(false);
+        window.Telegram?.WebApp?.HapticFeedback.notificationOccurred("error");
+      });
   };
 
   const handleCloseBot = () => window.Telegram?.WebApp?.close();
@@ -123,6 +163,15 @@ export function HomeScreen({
 
   return (
     <div ref={containerRef} className="flex flex-col gap-5">
+      {cropFile && (
+        <ImageCropper
+          file={cropFile}
+          t={t}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+        />
+      )}
+
       <div className="home-fade">
         <ScreenHeader t={t} />
       </div>
@@ -175,21 +224,21 @@ export function HomeScreen({
         </div>
       )}
 
-      <MatchOfDayCard
-        t={t}
-        apiCall={apiCall}
-        canAnalyze={canAnalyze}
-        hasFullAccess={hasFullAccess}
-        onResult={onResult}
-        onRefreshStatus={onRefreshStatus}
-      />
+      {!isProcessing && (
+        <MatchOfDayCard
+          t={t}
+          apiCall={apiCall}
+          canAnalyze={canAnalyze}
+          hasFullAccess={hasFullAccess}
+          onPredict={handleMatchPredict}
+          predicting={matchPredicting}
+        />
+      )}
 
-      {isUploading ? (
-        <div className="home-fade">
-          <ProcessingOverlay step={uploadStep} t={t} />
-          <div className="mt-6">
-            <StepPills t={t} activeStep={uploadStep} />
-          </div>
+      {isProcessing ? (
+        <div className="home-fade flex flex-col gap-6 py-4">
+          <ProcessingOverlay step={processStep} t={t} />
+          <StepPills t={t} activeStep={processStep} />
         </div>
       ) : (
         <>
@@ -213,11 +262,25 @@ export function HomeScreen({
             onDrop={(e) => {
               e.preventDefault();
               setIsDragging(false);
-              if (e.dataTransfer.files[0]) handleFileChange(e.dataTransfer.files[0]);
+              if (e.dataTransfer.files[0]) handleFileSelected(e.dataTransfer.files[0]);
             }}
           >
             {previewUrl ? (
-              <img src={previewUrl} alt="" className="max-h-44 w-full object-contain rounded-lg" />
+              <div className="relative w-full">
+                <img src={previewUrl} alt="" className="max-h-44 w-full object-contain rounded-lg" />
+                {hasFullAccess && !limitReached && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      setPreviewUrl(null);
+                    }}
+                    className="mt-2 text-[10px] text-accent font-medium"
+                  >
+                    {t.crop_change_photo}
+                  </button>
+                )}
+              </div>
             ) : (
               <>
                 <Upload className="w-8 h-8 text-textMuted" />
@@ -232,7 +295,7 @@ export function HomeScreen({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => e.target.files?.[0] && handleFileChange(e.target.files[0])}
+                  onChange={(e) => e.target.files?.[0] && handleFileSelected(e.target.files[0])}
                 />
               </label>
             )}

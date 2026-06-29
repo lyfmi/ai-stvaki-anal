@@ -116,7 +116,7 @@ async def get_match_of_day(
     return await MatchOfDayService().get_match()
 
 
-@router.post("/match-of-day/predict", response_model=AnalysisOut)
+@router.post("/match-of-day/predict", response_model=AnalysisDetailOut)
 async def predict_match_of_day(
     user=Depends(_get_user),
     db: AsyncSession = Depends(get_db),
@@ -133,7 +133,7 @@ async def predict_match_of_day(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
-    return AnalysisService.to_out(analysis)
+    return AnalysisService.to_detail(analysis)
 
 
 @router.get("/analyses", response_model=list[AnalysisOut])

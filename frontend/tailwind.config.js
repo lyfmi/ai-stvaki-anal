@@ -16,7 +16,8 @@ export default {
         brandDeep: "#062654",
         textPrimary: "#FFFFFF",
         textMuted: "#7B8FA8",
-        danger: "#FF453A",
+        success: "#22C55E",
+        successMuted: "#22C55E33",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

@@ -57,8 +57,9 @@ function DestinationView({
           settings={ctx.settings}
           apiCall={ctx.apiCall}
           onRefreshStatus={ctx.onRefreshStatus}
-          onResult={(id) => {
-            push({ type: "analyzeResult", id });
+          onAnalysisComplete={(data) => {
+            ctx.setAnalysisCache((prev) => ({ ...prev, [String(data.id)]: data }));
+            push({ type: "analyzeResult", id: String(data.id) });
           }}
         />
       );
@@ -98,6 +99,8 @@ function DestinationView({
             ctx.statusInfo?.user?.funnel_state === "UNLIMITED"
           }
           settings={ctx.settings}
+          lang={ctx.lang}
+          onRefreshStatus={ctx.onRefreshStatus}
           onBack={() => {
             if (activeTab === "home") pop();
             else pop();

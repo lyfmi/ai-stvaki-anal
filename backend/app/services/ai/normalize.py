@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.schemas import AnalysisResult, PremiumInsights
+from app.schemas import AnalysisResult, PremiumInsights, FormBarItem, KeyStatItem
 
 REQUIRED_FIELDS = (
     "recommendation",
@@ -119,6 +119,38 @@ def _looks_like_recommendation(value: str) -> bool:
     return "—" in text or " - " in text
 
 
+def coerce_premium_insights(raw: dict | None) -> PremiumInsights | None:
+    if not raw or not isinstance(raw, dict):
+        return None
+    try:
+        return PremiumInsights.model_validate(raw)
+    except ValidationError:
+        pass
+    form_bars = []
+    for item in raw.get("form_bars") or []:
+        if isinstance(item, dict) and item.get("team"):
+            try:
+                form_bars.append(FormBarItem.model_validate(item))
+            except ValidationError:
+                continue
+    key_stats = []
+    for item in raw.get("key_stats") or []:
+        if isinstance(item, dict) and item.get("label"):
+            try:
+                key_stats.append(KeyStatItem.model_validate(item))
+            except ValidationError:
+                continue
+    if not form_bars and not key_stats and not raw.get("h2h") and not raw.get("trends"):
+        return None
+    return PremiumInsights(
+        form_bars=form_bars,
+        h2h=str(raw.get("h2h") or ""),
+        key_stats=key_stats,
+        trends=[str(t) for t in (raw.get("trends") or []) if t],
+        advanced_arguments=[str(a) for a in (raw.get("advanced_arguments") or []) if a],
+    )
+
+
 def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
     flat = _flatten_dict(data)
     normalized: dict[str, Any] = {}
@@ -155,10 +187,7 @@ def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
 
     premium = normalized.get("premium_insights")
     if isinstance(premium, dict):
-        try:
-            normalized["premium_insights"] = PremiumInsights.model_validate(premium)
-        except ValidationError:
-            normalized["premium_insights"] = None
+        normalized["premium_insights"] = coerce_premium_insights(premium)
 
     for field in ("risk", "confidence", "market", "explanation", "analysis_mode", "match_status_label"):
         if field in normalized and normalized[field] is not None:

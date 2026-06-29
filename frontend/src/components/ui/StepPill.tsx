@@ -20,16 +20,32 @@ export function StepPills({ t, activeStep = null }: StepPillProps) {
   };
 
   return (
-    <div className="flex items-start w-full px-1">
-      {steps.map(({ key, icon: Icon, step }, idx) => {
-        const active = activeStep === step;
-        const done = activeStep !== null && activeStep > step;
-        const lineDone = activeStep !== null && activeStep > step;
+    <div className="relative w-full">
+      <div
+        className="pointer-events-none absolute left-[calc(100%/6)] right-[calc(100%/6)] top-[18px] flex"
+        aria-hidden="true"
+      >
+        <div
+          className={`h-px flex-1 ${
+            activeStep !== null && activeStep > 1 ? "bg-accent/40" : "bg-borderSubtle"
+          }`}
+        />
+        <div
+          className={`h-px flex-1 ${
+            activeStep !== null && activeStep > 2 ? "bg-accent/40" : "bg-borderSubtle"
+          }`}
+        />
+      </div>
 
-        return (
-          <div key={key} className="flex items-start flex-1 min-w-0">
+      <div className="grid grid-cols-3 w-full">
+        {steps.map(({ key, icon: Icon, step }) => {
+          const active = activeStep === step;
+          const done = activeStep !== null && activeStep > step;
+
+          return (
             <div
-              className={`flex flex-col items-center flex-1 min-w-0 transition-all duration-300 ${
+              key={key}
+              className={`flex flex-col items-center transition-all duration-300 ${
                 active ? "opacity-100" : done ? "opacity-70" : "opacity-40"
               }`}
             >
@@ -45,26 +61,16 @@ export function StepPills({ t, activeStep = null }: StepPillProps) {
                 <Icon className={`w-4 h-4 ${active || done ? "text-accent" : "text-textMuted"}`} />
               </div>
               <span
-                className={`mt-1.5 w-full text-[10px] text-center leading-tight min-h-[2.5em] block transition-all duration-300 ${
+                className={`mt-1.5 text-[10px] text-center leading-tight min-h-[2.5em] px-1 transition-all duration-300 ${
                   active ? "text-accent" : done ? "text-textMuted opacity-70" : "text-textMuted opacity-40"
                 }`}
               >
                 {labels[key]}
               </span>
             </div>
-
-            {idx < steps.length - 1 && (
-              <div className="shrink-0 flex items-center h-9 px-0.5 sm:px-1" aria-hidden="true">
-                <div
-                  className={`h-px w-full min-w-[1.5rem] sm:min-w-[2rem] max-w-[2.5rem] ${
-                    lineDone ? "bg-accent/40" : "bg-borderSubtle"
-                  }`}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

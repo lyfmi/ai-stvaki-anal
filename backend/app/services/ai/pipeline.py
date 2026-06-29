@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from app.core.config import settings
 from app.schemas import AnalysisResult, SearchPayload, VisionPayload
-from app.services.ai.match_context import build_smart_search_queries, resolve_match_context
+from app.services.ai.match_context import build_smart_search_queries, resolve_match_context, resolve_match_context_from_fixture
 from app.services.ai.normalize import normalize_analysis_data, parse_analysis_result
 from app.services.ai.prompts.synthesis import (
     MATCH_OF_DAY_SYNTHESIS_TEMPLATE,
@@ -79,6 +79,12 @@ MOCK_POSTMATCH_SYNTHESIS = {
 }
 
 
+VISION_REPAIR_PROMPT = """Return ONLY valid JSON with keys:
+sport, league, home_team, away_team, match_datetime, market_type, available_outcomes,
+screenshot_notes, search_queries, parse_confidence, datetime_on_screenshot, odds_on_screenshot, match_status_hint.
+Extract team names and match datetime from the screenshot. Odds optional."""
+
+
 class VisionExtractor:
     def __init__(self) -> None:
         self.client = NousClient()
@@ -90,14 +96,36 @@ class VisionExtractor:
         mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(
             ext, "image/jpeg"
         )
-        data = await self.client.vision_json(image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime)
-        return VisionPayload.model_validate(data)
+        try:
+            data = await self.client.vision_json(image_bytes, VISION_SYSTEM_PROMPT, VISION_USER_PROMPT, mime_type=mime)
+            return VisionPayload.model_validate(data)
+        except (ValidationError, RuntimeError):
+            data = await self.client.vision_json(
+                image_bytes,
+                VISION_SYSTEM_PROMPT,
+                f"{VISION_USER_PROMPT}\n\n{VISION_REPAIR_PROMPT}",
+                mime_type=mime,
+            )
+            return VisionPayload.model_validate(data)
 
 
-SYNTHESIS_REPAIR_PROMPT = """The previous JSON was invalid. Return ONLY one JSON object with keys:
+SYNTHESIS_REPAIR_PROMPT = """The previous JSON was invalid or truncated. Return ONLY one JSON object with keys:
 recommendation, market, coefficient, probability_percent, risk, arguments, confidence, explanation,
 analysis_mode, match_status_label, match_datetime_msk, is_betting_recommendation, premium_insights.
-Do not use empty keys. recommendation must be a non-empty string."""
+Keep arguments concise (max 2 short sentences each) but COMPLETE — no cut-off words.
+recommendation must be a non-empty string."""
+
+
+def _looks_truncated(data: dict) -> bool:
+    if data.get("_finish_reason") == "length":
+        return True
+    for arg in data.get("arguments") or []:
+        if isinstance(arg, str) and len(arg) > 20 and arg[-1].isalnum() and arg[-1] not in ".!?":
+            tail = arg.split()[-1] if arg.split() else ""
+            if len(tail) < 4:
+                return True
+    rec = str(data.get("recommendation") or "").strip()
+    return len(rec) < 3
 
 
 class Synthesizer:
@@ -108,7 +136,7 @@ class Synthesizer:
         if settings.ai_mock and mock_data:
             return AnalysisResult.model_validate(mock_data)
 
-        data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, user_prompt)
+        data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, user_prompt, max_tokens=8192)
         try:
             result = parse_analysis_result(data)
         except (ValidationError, RuntimeError):
@@ -116,8 +144,19 @@ class Synthesizer:
                 f"{user_prompt}\n\nPrevious invalid JSON:\n{json.dumps(data, ensure_ascii=False)}\n\n"
                 f"{SYNTHESIS_REPAIR_PROMPT}"
             )
-            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, repair_prompt)
+            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, repair_prompt, max_tokens=8192)
             result = parse_analysis_result(data)
+
+        if _looks_truncated(data) or not (result.recommendation or "").strip():
+            compact_prompt = (
+                f"{user_prompt}\n\nPrevious response was truncated. Return compact but COMPLETE JSON. "
+                "Use at most 3 short arguments. Fill premium_insights.form_bars and key_stats."
+            )
+            data = await self.client.text_json(SYNTHESIS_SYSTEM_PROMPT, compact_prompt, max_tokens=8192)
+            result = parse_analysis_result(data)
+
+        if not (result.recommendation or "").strip():
+            raise RuntimeError("AI synthesis returned empty recommendation")
         return result
 
     async def synthesize(
@@ -153,6 +192,11 @@ class Synthesizer:
             result.analysis_mode = ctx.analysis_mode
         if result.match_datetime_msk is None:
             result.match_datetime_msk = ctx.match_datetime_msk
+        # Authoritative context overrides AI hallucinations on status/time
+        result.match_status_label = ctx.match_status_label
+        result.analysis_mode = ctx.analysis_mode
+        if ctx.match_datetime_msk:
+            result.match_datetime_msk = ctx.match_datetime_msk
         return result
 
     async def synthesize_match_of_day(
@@ -161,18 +205,7 @@ class Synthesizer:
         search: SearchPayload,
         user_lang: str,
     ) -> AnalysisResult:
-        vision = VisionPayload(
-            sport="football",
-            league=match.get("league"),
-            home_team=match.get("home_team"),
-            away_team=match.get("away_team"),
-            match_datetime=None,
-            datetime_on_screenshot=False,
-            odds_on_screenshot=False,
-            match_status_hint="upcoming",
-            search_queries=[],
-        )
-        ctx = resolve_match_context(vision, search, user_lang=user_lang, force_pre_match=True)
+        ctx = resolve_match_context_from_fixture(match, user_lang=user_lang)
         user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
             lang=user_lang,
             match_json=json.dumps(match, ensure_ascii=False),
@@ -180,9 +213,12 @@ class Synthesizer:
             match_context_json=json.dumps(ctx.model_dump(), ensure_ascii=False),
         )
         result = await self._call_synthesis(user_prompt, mock_data=MOCK_PREMATCH_SYNTHESIS)
-        result.analysis_mode = "pre_match"
-        result.is_betting_recommendation = True
-        if not result.match_datetime_msk:
+        result.analysis_mode = ctx.analysis_mode
+        result.match_status_label = ctx.match_status_label
+        result.is_betting_recommendation = ctx.analysis_mode != "post_match"
+        if ctx.match_datetime_msk:
+            result.match_datetime_msk = ctx.match_datetime_msk
+        elif match.get("kickoff_msk"):
             result.match_datetime_msk = match.get("kickoff_msk")
         return result
 
