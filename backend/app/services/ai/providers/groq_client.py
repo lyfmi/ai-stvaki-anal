@@ -5,7 +5,8 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.services.ai.models import resolve_model
+from app.services.ai.models import resolve_model, text_model_fallback_chain
+from app.services.ai.providers.groq_errors import GroqApiError
 from app.services.ai.providers.json_utils import parse_ai_json
 
 logger = logging.getLogger(__name__)
@@ -33,57 +34,79 @@ class GroqClient:
         if not self.api_key:
             raise RuntimeError("GROQ_API_KEY is not configured")
 
-        use_model = resolve_model(model or self.model, vision=bool(images))
         token_limit = max_tokens if max_tokens is not None else settings.groq_max_tokens
 
         if images:
             messages = _inject_images(messages, images, image_mime)
+            models_to_try = [resolve_model(model or self.model, vision=True)]
+        else:
+            models_to_try = text_model_fallback_chain(model or self.model)
 
-        payload: dict[str, Any] = {
-            "model": use_model,
-            "messages": messages,
-            "max_tokens": token_limit,
-            "temperature": temperature,
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-
+        last_error: GroqApiError | None = None
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            if response.status_code >= 400:
-                detail = response.text[:500]
-                raise RuntimeError(f"Groq API error {response.status_code}: {detail}")
-            data = response.json()
+            for use_model in models_to_try:
+                payload: dict[str, Any] = {
+                    "model": use_model,
+                    "messages": messages,
+                    "max_tokens": token_limit,
+                    "temperature": temperature,
+                }
+                if json_mode:
+                    payload["response_format"] = {"type": "json_object"}
 
-        if error := data.get("error"):
-            message = error.get("message") if isinstance(error, dict) else str(error)
-            raise RuntimeError(f"Groq API error: {message}")
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                if response.status_code == 429:
+                    detail = response.text[:500]
+                    last_error = GroqApiError(response.status_code, detail)
+                    logger.warning("Groq rate limit for %s, trying next model", use_model)
+                    continue
+                if response.status_code == 400 and "json_validate" in response.text.lower():
+                    detail = response.text[:500]
+                    last_error = GroqApiError(response.status_code, detail)
+                    logger.warning("Groq JSON mode failed for %s, trying next model", use_model)
+                    continue
+                if response.status_code >= 400:
+                    detail = response.text[:500]
+                    raise GroqApiError(response.status_code, detail)
 
-        choices = data.get("choices") or []
-        if not choices:
-            raise RuntimeError("Groq API returned no choices")
+                data = response.json()
+                if error := data.get("error"):
+                    message = error.get("message") if isinstance(error, dict) else str(error)
+                    raise GroqApiError(500, str(message))
 
-        choice = choices[0]
-        message = choice.get("message") or {}
-        content = message.get("content")
-        finish_reason = str(choice.get("finish_reason") or "stop")
-        model_used = str(data.get("model") or use_model)
+                choices = data.get("choices") or []
+                if not choices:
+                    raise RuntimeError("Groq API returned no choices")
 
-        content_text = content.strip() if isinstance(content, str) and content.strip() else None
-        if not content_text:
-            raise RuntimeError(f"Empty AI response (finish_reason={finish_reason})")
+                choice = choices[0]
+                message = choice.get("message") or {}
+                content = message.get("content")
+                finish_reason = str(choice.get("finish_reason") or "stop")
+                model_used = str(data.get("model") or use_model)
 
-        if finish_reason == "length":
-            logger.warning("Groq response truncated at %s tokens (model=%s)", token_limit, model_used)
+                content_text = content.strip() if isinstance(content, str) and content.strip() else None
+                if not content_text:
+                    raise RuntimeError(f"Empty AI response (finish_reason={finish_reason})")
 
-        return content_text, model_used, finish_reason
+                if finish_reason == "length":
+                    logger.warning(
+                        "Groq response truncated at %s tokens (model=%s)", token_limit, model_used
+                    )
+
+                if use_model != models_to_try[0]:
+                    logger.info("Groq fallback succeeded with model %s", model_used)
+                return content_text, model_used, finish_reason
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Groq API request failed")
 
     async def vision_json(
         self,

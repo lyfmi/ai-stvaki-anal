@@ -11,6 +11,7 @@ from app.models import AiAnalysis, User
 from app.schemas import SearchPayload, VisionPayload
 from app.services.ai.match_context import resolve_match_context
 from app.services.ai.pipeline import AiAnalysisPipeline, UnreadableScreenshotError, _looks_truncated
+from app.services.ai.providers.groq_errors import GroqApiError
 from app.services.ai.normalize import coerce_premium_insights
 from app.services.analysis_mapper import analysis_to_detail, analysis_to_out, persist_analysis_fields
 from app.services.funnel import FunnelService
@@ -18,6 +19,25 @@ from app.services.limits import AttemptsLimitService
 from app.services.match_of_day import MatchOfDayService
 
 logger = logging.getLogger(__name__)
+
+
+def _user_facing_ai_error(exc: Exception) -> ValueError:
+    if isinstance(exc, GroqApiError) and exc.is_rate_limit:
+        return ValueError(
+            "Сервис AI временно перегружен. Попробуйте через 15–20 минут или выберите другую модель."
+        )
+    if isinstance(exc, GroqApiError):
+        return ValueError("Ошибка AI-сервиса, попробуйте ещё раз")
+    msg = str(exc)
+    if "429" in msg or "rate_limit" in msg.lower():
+        return ValueError(
+            "Сервис AI временно перегружен. Попробуйте через 15–20 минут или выберите другую модель."
+        )
+    if "JSON" in msg or "synthesis" in msg.lower():
+        return ValueError("Ошибка AI-анализа, попробуйте ещё раз")
+    if "Vision" in msg or "vision" in msg:
+        return ValueError("Не удалось прочитать скриншот")
+    return ValueError("Ошибка обработки, попробуйте ещё раз")
 
 
 class AnalysisService:
@@ -70,13 +90,10 @@ class AnalysisService:
             raise ValueError(str(e)) from e
         except ValidationError as e:
             raise ValueError("Не удалось распознать скриншот") from e
+        except GroqApiError as e:
+            raise _user_facing_ai_error(e) from e
         except RuntimeError as e:
-            msg = str(e)
-            if "Vision" in msg or "vision" in msg:
-                raise ValueError("Не удалось прочитать скриншот") from e
-            if "JSON" in msg or "synthesis" in msg.lower():
-                raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
-            raise ValueError("Ошибка обработки, попробуйте ещё раз") from e
+            raise _user_facing_ai_error(e) from e
 
         vision = pipeline_result["vision"]
         search = pipeline_result["search"]
@@ -115,9 +132,12 @@ class AnalysisService:
             )
         except ValidationError as e:
             raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
+        except GroqApiError as e:
+            logger.warning("Match-of-day predict failed: %s", e)
+            raise _user_facing_ai_error(e) from e
         except RuntimeError as e:
             logger.warning("Match-of-day predict failed: %s", e)
-            raise ValueError("Ошибка AI-анализа, попробуйте ещё раз") from e
+            raise _user_facing_ai_error(e) from e
 
         search = pipeline_result["search"]
         result = pipeline_result["result"]

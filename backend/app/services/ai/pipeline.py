@@ -27,6 +27,7 @@ from app.services.ai.vision_guard import (
     vision_teams_valid,
 )
 from app.services.ai.providers.groq_client import GroqClient
+from app.services.ai.providers.groq_errors import GroqApiError
 from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
 from app.services.team_names import localize_league_name, localize_team_name
 from app.services.ai.search_enricher import SearchEnricher
@@ -389,6 +390,8 @@ class Synthesizer:
         )
         try:
             result = await self._call_compact_synthesis(compact_prompt, model=model)
+        except GroqApiError:
+            raise
         except (ValidationError, RuntimeError):
             user_prompt = MATCH_OF_DAY_SYNTHESIS_TEMPLATE.format(
                 lang=user_lang,
