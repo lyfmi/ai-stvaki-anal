@@ -45,3 +45,41 @@ def test_pick_fixture_em_dash_teams():
     assert picked is not None
     assert picked["home_team"] == "Brazil"
     assert picked["away_team"] == "Japan"
+
+
+def test_rejects_group_placeholder_teams():
+    kickoff = now_msk() + timedelta(hours=3)
+    results = [
+        SearchResultItem(
+            query="q",
+            title="World Cup 2026 | Match schedule, fixtures & stadiums - FIFA",
+            snippet=(
+                f"Match 79 – Group A winners v Group C/E/F/H/I third place - Mexico City Stadium. "
+                f"Wednesday, {kickoff.strftime('%d %B %Y')}"
+            ),
+            url="https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/match-schedule-fixtur",
+        ),
+        SearchResultItem(
+            query="q",
+            title="England v Congo DR: Line-ups, Score & Live Updates | Round of 32 - FIFA",
+            snippet="England vs. Congo DR ; Competition. FIFA World Cup™ ; Kick Off. 1 July 2026, 16:00 ; Location. Atlanta Stadium",
+            url="https://www.fifa.com/en/match-centre/match/17/285023/289287/400021512",
+        ),
+    ]
+    picked = pick_fixture_from_search(results)
+    assert picked is not None
+    assert picked["home_team"] == "England"
+    assert picked["away_team"] == "Congo DR"
+    assert picked["kickoff_msk"].endswith("19:00 МСК")
+
+
+def test_fifa_match_centre_kickoff_utc_to_msk():
+    now = now_msk()
+    kickoff = _parse_kickoff_from_text(
+        "Kick Off. 1 July 2026, 16:00 ; Location. Atlanta Stadium",
+        now,
+        url="https://www.fifa.com/en/match-centre/match/17/285023/289287/400021512",
+    )
+    assert kickoff is not None
+    assert kickoff.hour == 19
+    assert kickoff.minute == 0

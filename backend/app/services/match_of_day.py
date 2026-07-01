@@ -20,7 +20,7 @@ from app.services.ai.match_context import (
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.providers.json_utils import parse_ai_json
 from app.services.ai.search_enricher import SearchEnricher
-from app.services.match_of_day_parser import pick_fixture_from_search
+from app.services.match_of_day_parser import pick_fixture_from_search, _is_placeholder_team
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,14 @@ class MatchOfDayService:
         home = str(raw.get("home_team", "")).strip()
         away = str(raw.get("away_team", "")).strip()
         junk = ("news", "times", "breaking", "youtube", "wikipedia")
-        if not home or not away or any(w in home.lower() for w in junk) or any(w in away.lower() for w in junk):
+        if (
+            not home
+            or not away
+            or _is_placeholder_team(home)
+            or _is_placeholder_team(away)
+            or any(w in home.lower() for w in junk)
+            or any(w in away.lower() for w in junk)
+        ):
             return None
 
         now = now_msk()
@@ -162,13 +169,11 @@ class MatchOfDayService:
 
     def _build_queries(self, now: datetime) -> list[str]:
         date_human = now.strftime("%d %B %Y")
-        tomorrow = (now + timedelta(days=1)).strftime("%d %B %Y")
-        month_year = now.strftime("%B %Y")
         return [
-            f"site:fifa.com World Cup 2026 match {date_human}",
-            f"FIFA World Cup 2026 live scores {date_human}",
-            f"World Cup 2026 fixtures schedule {month_year} kickoff",
-            f"World Cup 2026 matches {tomorrow} kickoff MSK",
+            f"site:fifa.com/en/match-centre World Cup 2026 {date_human}",
+            f"site:fifa.com World Cup 2026 knockout stage {date_human}",
+            f"FIFA World Cup 2026 Round of 32 {date_human} kickoff",
+            f"World Cup 2026 live scores {date_human}",
         ]
 
     async def _fetch_and_pick(self) -> dict | None:

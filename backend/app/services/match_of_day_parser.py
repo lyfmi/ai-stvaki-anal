@@ -99,6 +99,29 @@ JUNK_WORDS = (
     "espn.com/live",
 )
 
+PLACEHOLDER_TEAM_MARKERS = (
+    "group ",
+    "group a",
+    "group b",
+    "group c",
+    "group d",
+    "group e",
+    "group f",
+    "group g",
+    "group h",
+    "winner",
+    "runners",
+    "runner-up",
+    "third place",
+    "tbd",
+    "tbc",
+    "to be determined",
+    "match ",
+    "round of",
+)
+
+GROUP_CODE = re.compile(r"^[\d]+[a-z]{1,6}$", re.I)
+
 MONTHS = {
     "january": 1,
     "february": 2,
@@ -131,11 +154,26 @@ def _is_sports_blob(blob: str) -> bool:
     return any(marker in lower for marker in SPORT_MARKERS)
 
 
+def _is_placeholder_team(name: str) -> bool:
+    lower = name.strip().lower()
+    if not lower:
+        return True
+    if GROUP_CODE.match(lower.replace(" ", "")):
+        return True
+    if any(marker in lower for marker in PLACEHOLDER_TEAM_MARKERS):
+        return True
+    if lower.startswith("group ") or lower.endswith(" group"):
+        return True
+    return False
+
+
 def _is_valid_team(name: str) -> bool:
     text = name.strip()
     if len(text) < 3 or len(text) > 45:
         return False
     lower = text.lower()
+    if _is_placeholder_team(text):
+        return False
     if any(word in lower for word in JUNK_WORDS):
         return False
     if lower in {"team a", "team b", "football", "fifa"}:
@@ -201,7 +239,18 @@ def _extract_date(blob: str, reference: datetime) -> tuple[int, int, int]:
     return day, month, year
 
 
-def _parse_kickoff_from_text(text: str, reference: datetime) -> datetime | None:
+def _fifa_kickoff_to_msk(hour: int, minute: int, blob: str, url: str) -> tuple[int, int]:
+    """FIFA match-centre kickoff times are UTC; stadium pages may use local ET."""
+    lower_url = url.lower()
+    lower_blob = blob.lower()
+    if "match-centre" in lower_url or "/match/" in lower_url:
+        return (hour + 3) % 24, minute
+    if "atlanta" in lower_blob or re.search(r"\bet\b", lower_blob):
+        return (hour + 7) % 24, minute
+    return hour, minute
+
+
+def _parse_kickoff_from_text(text: str, reference: datetime, *, url: str = "") -> datetime | None:
     blob = text.replace("–", "-")
     day, month, year = _extract_date(blob, reference)
 
@@ -235,8 +284,7 @@ def _parse_kickoff_from_text(text: str, reference: datetime) -> datetime | None:
         year = int(fifa_comma.group(3))
         hour = int(fifa_comma.group(4))
         minute = int(fifa_comma.group(5))
-        if "atlanta" in blob.lower() or "et" in blob.lower():
-            hour = (hour + 7) % 24
+        hour, minute = _fifa_kickoff_to_msk(hour, minute, blob, url)
         try:
             return reference.replace(
                 year=year, month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0
@@ -314,7 +362,15 @@ def _is_live_blob(blob: str) -> bool:
     return any(marker in lower for marker in STRONG_LIVE_MARKERS)
 
 
-def _score_fixture(home: str, away: str, kickoff: datetime | None, blob: str, now: datetime) -> float:
+def _score_fixture(
+    home: str,
+    away: str,
+    kickoff: datetime | None,
+    blob: str,
+    now: datetime,
+    *,
+    url: str = "",
+) -> float:
     if not _is_valid_team(home) or not _is_valid_team(away):
         return -1
     if home.lower() == away.lower():
@@ -322,10 +378,15 @@ def _score_fixture(home: str, away: str, kickoff: datetime | None, blob: str, no
 
     score = 0.0
     lower = blob.lower()
+    lower_url = url.lower()
+    if "match-centre" in lower_url or "/match/" in lower_url:
+        score += 120
     if "fifa.com" in lower:
         score += 50
     if "world cup" in lower:
         score += 35
+    if "knockout" in lower or "round of 32" in lower:
+        score += 20
 
     is_live = _is_live_blob(blob)
     if kickoff:
@@ -375,7 +436,7 @@ def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
                 # #endregion
                 continue
 
-            kickoff = _parse_kickoff_from_text(text_blob, now)
+            kickoff = _parse_kickoff_from_text(text_blob, now, url=item.url)
             if kickoff is None:
                 kickoff = _fallback_kickoff_from_date(text_blob, blob, now)
             if kickoff is None:
@@ -389,7 +450,7 @@ def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
                 # #endregion
                 continue
 
-            score = _score_fixture(home, away, kickoff, blob, now)
+            score = _score_fixture(home, away, kickoff, blob, now, url=item.url)
             if score < 10 or kickoff is None:
                 continue
 
