@@ -158,9 +158,61 @@ def _text_has_foreign_team(text: str, home: str, away: str) -> bool:
     return False
 
 
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        text = item.strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
+def _mentions_team(text: str, team: str | None) -> bool:
+    team = _norm(team)
+    if not team:
+        return False
+    lower = text.lower()
+    if team in lower:
+        return True
+    tokens = [t for t in re.split(r"[\s\-.]+", team) if len(t) > 2]
+    if tokens and all(token in lower for token in tokens):
+        return True
+    if "congo" in team and "congo" in lower:
+        return True
+    return False
+
+
+def side_hint_home(rec_l: str, home: str, away: str) -> bool:
+    if _mentions_team(rec_l, away) and not _mentions_team(rec_l, home):
+        return False
+    return True
+
+
+def _redact_foreign_teams(text: str, home: str, away: str) -> str:
+    allowed = {_norm(home), _norm(away)}
+    out = text
+    for blocked in sorted(_BLOCKED_TEAMS, key=len, reverse=True):
+        if blocked in allowed:
+            continue
+        if blocked not in out.lower():
+            continue
+        replacement = home if side_hint_home(out.lower(), home, away) else away
+        out = re.sub(re.escape(blocked), replacement, out, flags=re.IGNORECASE)
+    return out
+
+
 def _scrub_text(text: str, home: str, away: str, user_lang: str) -> str:
     if not text or not _text_has_foreign_team(text, home, away):
         return text
+    redacted = _redact_foreign_teams(text, home, away)
+    if not _text_has_foreign_team(redacted, home, away):
+        return redacted
     if user_lang.startswith("ru"):
         return f"Анализ матча {home} — {away} на основе данных со скриншота и актуальной формы."
     return f"Analysis for {home} vs {away} based on screenshot data and recent form."
@@ -202,11 +254,14 @@ def enforce_authoritative_teams(
     if result.explanation:
         result.explanation = _scrub_text(result.explanation, home, away, user_lang)
     if result.arguments:
-        result.arguments = [
-            _scrub_text(arg, home, away, user_lang)
+        scrubbed = [
+            _redact_foreign_teams(arg, home, away)
+            if _text_has_foreign_team(arg, home, away)
+            else arg.strip()
             for arg in result.arguments
             if arg.strip()
         ]
+        result.arguments = _dedupe_preserve_order(scrubbed)
     result.premium_insights = _fix_premium_teams(result.premium_insights, home, away)
 
     from app.services.ai.odds_resolver import anchor_teams_in_recommendation

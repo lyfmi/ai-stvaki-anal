@@ -34,6 +34,23 @@ def test_enforce_scrubs_france_from_explanation():
     assert "Brazil" in out.recommendation or "Бразил" in out.recommendation
 
 
+def test_enforce_dedupes_identical_scrubbed_arguments():
+    result = AnalysisResult(
+        recommendation="П1 — Победа Brazil",
+        arguments=[
+            "Франция доминирует в классике",
+            "Франция сильнее в атаке",
+            "Франция лучше по составу",
+        ],
+        analysis_mode="pre_match",
+        is_betting_recommendation=True,
+    )
+    out = enforce_authoritative_teams(result, "Brazil", "Japan", user_lang="ru")
+    assert len(out.arguments) >= 1
+    assert len(out.arguments) <= 3
+    assert len({a.casefold() for a in out.arguments}) == len(out.arguments)
+
+
 def test_vision_needs_retry_for_placeholder_teams():
     vision = VisionPayload(
         home_team="Домашняя",

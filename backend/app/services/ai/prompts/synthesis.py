@@ -73,10 +73,13 @@ Odds from screenshot (authoritative): {odds_json}
 Filtered web facts (only about {home} vs {away}):
 {search_bullets}
 
-FORBIDDEN: France, Germany, Argentina, Spain, England or any team except {home} and {away}.
+FORBIDDEN: France, Germany, Argentina, Spain or any team except {home} and {away}.
 form_bars team names MUST be exactly "{home}" and "{away}".
 coefficient from screenshot odds only — null if unknown. probability_percent=null when coefficient null.
-recommendation ru example: "П1 — Победа {home}" or "П2 — Победа {away}"."""
+recommendation ru example: "П1 — Победа {home}" or "П2 — Победа {away}".
+Return ONE compact JSON. Max 2 distinct arguments in user language.
+premium_insights REQUIRED with form_bars (2 teams), key_stats (>=1), non-empty h2h.
+form_bars: each team wins+draws+losses >= 3 total, not all zeros."""
 
 POST_MATCH_COMPACT_TEMPLATE = """User language: {lang} — write ALL text in this language only.
 Match: {home} vs {away}

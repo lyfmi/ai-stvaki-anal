@@ -125,6 +125,18 @@ def _coerce_arguments(value: Any) -> list[str]:
     return []
 
 
+def _dedupe_arguments(args: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for arg in args:
+        key = arg.strip().casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(arg.strip())
+    return out
+
+
 def _looks_like_recommendation(value: str) -> bool:
     text = value.strip()
     if not text or len(text) > 160:
@@ -190,7 +202,7 @@ def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
     if normalized.get("confidence") is not None:
         normalized["confidence"] = _coerce_confidence(normalized["confidence"])
     if "arguments" in normalized:
-        normalized["arguments"] = _coerce_arguments(normalized["arguments"])
+        normalized["arguments"] = _dedupe_arguments(_coerce_arguments(normalized["arguments"]))
 
     if normalized.get("is_betting_recommendation") is not None:
         val = normalized["is_betting_recommendation"]

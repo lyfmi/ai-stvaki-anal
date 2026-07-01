@@ -366,6 +366,9 @@ class Synthesizer:
             result, vision.home_team, vision.away_team, user_lang=user_lang
         )
         result = apply_odds_policy(result, vision=vision, search=search)
+        home_label = localize_team_name(vision.home_team or "", user_lang)
+        away_label = localize_team_name(vision.away_team or "", user_lang)
+        result = ensure_fixture_premium_insights(result, home_label, away_label)
         return result
 
     async def synthesize_match_of_day(
