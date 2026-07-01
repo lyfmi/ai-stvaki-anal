@@ -45,7 +45,7 @@ PICK_USER_TEMPLATE = """Current MSK datetime: {now_msk}
 Today's date MSK: {date_msk}
 
 Pick the best match for users RIGHT NOW. Prefer LIVE if any match already started.
-If South Africa vs Canada or Brazil vs Japan appear — use real kickoff from snippets.
+Use only teams and kickoff times explicitly present in the snippets.
 
 Search snippets:
 {search_json}
@@ -163,10 +163,11 @@ class MatchOfDayService:
     def _build_queries(self, now: datetime) -> list[str]:
         date_human = now.strftime("%d %B %Y")
         tomorrow = (now + timedelta(days=1)).strftime("%d %B %Y")
+        month_year = now.strftime("%B %Y")
         return [
-            "South Africa v Canada FIFA World Cup 2026 kickoff June 28 live",
-            "Brazil v Japan FIFA World Cup 2026 June 29 kickoff Houston",
-            f"FIFA World Cup 2026 live scores fixtures {date_human}",
+            f"site:fifa.com World Cup 2026 match {date_human}",
+            f"FIFA World Cup 2026 live scores {date_human}",
+            f"World Cup 2026 fixtures schedule {month_year} kickoff",
             f"World Cup 2026 matches {tomorrow} kickoff MSK",
         ]
 

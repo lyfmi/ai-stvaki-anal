@@ -7,6 +7,20 @@ from app.services.match_of_day import CACHE_PREFIX, MatchOfDayService
 from app.services.match_of_day_parser import pick_fixture_from_search
 
 
+def _upcoming_fifa_fixture(home: str, away: str) -> tuple[SearchResultItem, str]:
+    kickoff = now_msk() + timedelta(hours=20)
+    snippet = kickoff.strftime("%A %d %B %Y Houston Stadium GMT 17:00")
+    return (
+        SearchResultItem(
+            query="q",
+            title=f"{home} v {away} | FIFA World Cup Round of 32",
+            snippet=snippet,
+            url="https://www.fifa.com/en/tournaments/mens/worldcup",
+        ),
+        away,
+    )
+
+
 def test_cache_key_uses_msk_date():
     key = f"{CACHE_PREFIX}:{msk_date_key()}"
     assert key.startswith("match_of_day:v2:")
@@ -14,6 +28,7 @@ def test_cache_key_uses_msk_date():
 
 
 def test_pick_fixture_from_fifa_snippet():
+    brazil_japan, _ = _upcoming_fifa_fixture("Brazil", "Japan")
     results = [
         SearchResultItem(
             query="q",
@@ -21,12 +36,7 @@ def test_pick_fixture_from_fifa_snippet():
             snippet="Sunday, 28 June | Los Angeles Stadium. Kick-off time 21:00 SAST",
             url="https://fifa.com",
         ),
-        SearchResultItem(
-            query="q",
-            title="Brazil v Japan | FIFA World Cup Round of 32",
-            snippet="Monday 29 June 2026 Houston Stadium GMT 17:00",
-            url="https://fifa.com",
-        ),
+        brazil_japan,
     ]
     picked = pick_fixture_from_search(results)
     assert picked is not None
@@ -35,6 +45,7 @@ def test_pick_fixture_from_fifa_snippet():
 
 
 def test_espn_live_score_archive_not_picked():
+    brazil_japan, _ = _upcoming_fifa_fixture("Brazil", "Japan")
     results = [
         SearchResultItem(
             query="q",
@@ -42,12 +53,7 @@ def test_espn_live_score_archive_not_picked():
             snippet="Final score and match highlights",
             url="https://espn.com",
         ),
-        SearchResultItem(
-            query="q",
-            title="Brazil v Japan | FIFA World Cup Round of 32",
-            snippet="Monday 29 June 2026 Houston Stadium GMT 17:00",
-            url="https://fifa.com",
-        ),
+        brazil_japan,
     ]
     picked = pick_fixture_from_search(results)
     assert picked is not None

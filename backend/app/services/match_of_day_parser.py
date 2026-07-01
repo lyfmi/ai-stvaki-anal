@@ -8,7 +8,16 @@ from app.schemas import SearchResultItem
 from app.services.ai.match_context import format_datetime_msk, now_msk
 
 TEAM_VS = re.compile(
-    r"([A-ZÀ-ÖØ-Þ][A-Za-z\s\-'.]{2,40}?)\s+(?:v|vs)\.?\s+([A-ZÀ-ÖØ-Þ][A-Za-z\s\-'.]{2,40})",
+    r"([A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ\s\-'.]{2,40}?)\s+"
+    r"(?:v\.?|vs\.?|–|—|-)\s+"
+    r"([A-ZÀ-ÖØ-Þ][A-Za-zÀ-ÖØ-öø-ÿ\s\-'.]{2,40})",
+    re.IGNORECASE,
+)
+KICKOFF_FIFA_COMMA = re.compile(
+    r"(\d{1,2})\s+"
+    r"(January|February|March|April|May|June|July|August|September|October|November|December|"
+    r"Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+    r"(\d{4}),?\s+(\d{1,2}):(\d{2})",
     re.IGNORECASE,
 )
 KICKOFF_TIME = re.compile(
@@ -219,6 +228,22 @@ def _parse_kickoff_from_text(text: str, reference: datetime) -> datetime | None:
         except ValueError:
             return None
 
+    fifa_comma = KICKOFF_FIFA_COMMA.search(blob)
+    if fifa_comma:
+        day = int(fifa_comma.group(1))
+        month = MONTHS.get(fifa_comma.group(2).lower(), month)
+        year = int(fifa_comma.group(3))
+        hour = int(fifa_comma.group(4))
+        minute = int(fifa_comma.group(5))
+        if "atlanta" in blob.lower() or "et" in blob.lower():
+            hour = (hour + 7) % 24
+        try:
+            return reference.replace(
+                year=year, month=month, day=day, hour=hour, minute=minute, second=0, microsecond=0
+            )
+        except ValueError:
+            return None
+
     time_match = KICKOFF_TIME.search(blob)
     if not time_match:
         return None
@@ -257,6 +282,27 @@ def _fixture_day_before_today(blob: str, reference: datetime) -> bool:
     except ValueError:
         return False
     return fixture_day.date() < reference.date()
+
+
+def _fallback_kickoff_from_date(text_blob: str, blob: str, reference: datetime) -> datetime | None:
+    """Use match date from FIFA/World Cup snippets when kickoff time is missing."""
+    lower = blob.lower()
+    if "fifa.com" not in lower and "world cup" not in lower:
+        return None
+    if _fixture_day_before_today(text_blob, reference):
+        return None
+    day, month, year = _extract_date(text_blob, reference)
+    try:
+        candidate = reference.replace(
+            year=year, month=month, day=day, hour=20, minute=0, second=0, microsecond=0
+        )
+    except ValueError:
+        return None
+    if candidate.date() < reference.date():
+        return None
+    if candidate > reference + timedelta(hours=40):
+        return None
+    return candidate
 
 
 def _is_live_blob(blob: str) -> bool:
@@ -330,6 +376,8 @@ def pick_fixture_from_search(results: list[SearchResultItem]) -> dict | None:
                 continue
 
             kickoff = _parse_kickoff_from_text(text_blob, now)
+            if kickoff is None:
+                kickoff = _fallback_kickoff_from_date(text_blob, blob, now)
             if kickoff is None:
                 # #region agent log
                 agent_log(

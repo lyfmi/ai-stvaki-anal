@@ -33,6 +33,10 @@ declare global {
           selectionChanged: () => void;
         };
         openLink: (url: string, options?: { try_instant_view?: boolean }) => void;
+        viewportHeight?: number;
+        viewportStableHeight?: number;
+        onEvent?: (eventType: string, callback: () => void) => void;
+        offEvent?: (eventType: string, callback: () => void) => void;
       };
     };
   }

@@ -18,8 +18,8 @@ interface CropRect {
 }
 
 const MIN_SIZE = 40;
-const MAX_VIEWPORT_HEIGHT_RATIO = 0.42;
-const MIN_DISPLAY_LONG_EDGE = 300;
+const MIN_CROP_LONG_EDGE = 800;
+const CHROME_HEIGHT = 168;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -33,13 +33,26 @@ function normalizeRect(rect: CropRect, bounds: { w: number; h: number }): CropRe
   return { x, y, w, h };
 }
 
+function viewportHeight() {
+  const tg = window.Telegram?.WebApp;
+  return tg?.viewportStableHeight ?? tg?.viewportHeight ?? window.innerHeight;
+}
+
+function getWorkspaceBounds(container: HTMLElement) {
+  const vh = viewportHeight();
+  const rect = container.getBoundingClientRect();
+  const maxW = Math.max(300, rect.width || container.clientWidth || window.innerWidth - 12);
+  const measuredH = rect.height > 80 ? rect.height : vh - CHROME_HEIGHT;
+  const maxH = Math.max(420, measuredH);
+  return { maxW, maxH };
+}
+
+/** Maximize image inside workspace; allow upscale for small screenshots. */
 function computeDisplaySize(naturalW: number, naturalH: number, maxW: number, maxH: number) {
-  let scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-  const minScale = Math.min(1, MIN_DISPLAY_LONG_EDGE / Math.max(naturalW, naturalH));
-  scale = Math.max(scale, minScale);
+  const scale = Math.min(maxW / naturalW, maxH / naturalH);
   return {
-    w: Math.round(naturalW * scale),
-    h: Math.round(naturalH * scale),
+    w: Math.max(1, Math.round(naturalW * scale)),
+    h: Math.max(1, Math.round(naturalH * scale)),
   };
 }
 
@@ -47,6 +60,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const bitmapRef = useRef<ImageBitmap | null>(null);
   const cropRef = useRef<CropRect | null>(null);
   const anchorRef = useRef<{ x: number; y: number } | null>(null);
   const displayRef = useRef({ w: 0, h: 0 });
@@ -55,8 +69,13 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
 
   const [src, setSrc] = useState("");
   const [display, setDisplay] = useState({ w: 0, h: 0 });
+  const [workspaceH, setWorkspaceH] = useState(0);
   const [hasCrop, setHasCrop] = useState(false);
   const [confirming, setConfirming] = useState(false);
+
+  const updateWorkspaceHeight = useCallback(() => {
+    setWorkspaceH(Math.max(420, viewportHeight() - CHROME_HEIGHT));
+  }, []);
 
   const paintOverlay = useCallback((rect: CropRect | null) => {
     const node = overlayRef.current;
@@ -92,17 +111,13 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
   );
 
   const measureImage = useCallback(() => {
+    const container = containerRef.current;
+    const natural = naturalRef.current;
     const img = imgRef.current;
-    if (!img || !img.naturalWidth) return;
+    if (!container || !natural.w || !img) return;
 
-    const naturalW = img.naturalWidth;
-    const naturalH = img.naturalHeight;
-    naturalRef.current = { w: naturalW, h: naturalH };
-
-    const maxH = window.innerHeight * MAX_VIEWPORT_HEIGHT_RATIO;
-    const containerW = containerRef.current?.clientWidth ?? window.innerWidth - 32;
-    const maxW = Math.min(containerW, window.innerWidth - 32);
-    const { w: displayW, h: displayH } = computeDisplaySize(naturalW, naturalH, maxW, maxH);
+    const { maxW, maxH } = getWorkspaceBounds(container);
+    const { w: displayW, h: displayH } = computeDisplaySize(natural.w, natural.h, maxW, maxH);
 
     img.style.width = `${displayW}px`;
     img.style.height = `${displayH}px`;
@@ -111,25 +126,60 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     setDisplay({ w: displayW, h: displayH });
   }, []);
 
+  const handleImageLoad = useCallback(() => {
+    measureImage();
+    requestAnimationFrame(() => measureImage());
+  }, [measureImage]);
+
+  useEffect(() => {
+    updateWorkspaceHeight();
+    const tg = window.Telegram?.WebApp;
+    const onViewport = () => {
+      updateWorkspaceHeight();
+      requestAnimationFrame(() => measureImage());
+    };
+    tg?.onEvent?.("viewportChanged", onViewport);
+    window.addEventListener("resize", onViewport);
+    return () => {
+      tg?.offEvent?.("viewportChanged", onViewport);
+      window.removeEventListener("resize", onViewport);
+    };
+  }, [measureImage, updateWorkspaceHeight]);
+
   useEffect(() => {
     const url = URL.createObjectURL(file);
     setSrc(url);
     clearCrop();
-    return () => URL.revokeObjectURL(url);
-  }, [file, clearCrop]);
+
+    let cancelled = false;
+    void createImageBitmap(file)
+      .then((bitmap) => {
+        if (cancelled) {
+          bitmap.close();
+          return;
+        }
+        bitmapRef.current?.close();
+        bitmapRef.current = bitmap;
+        naturalRef.current = { w: bitmap.width, h: bitmap.height };
+        requestAnimationFrame(() => measureImage());
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      URL.revokeObjectURL(url);
+      bitmapRef.current?.close();
+      bitmapRef.current = null;
+    };
+  }, [file, clearCrop, measureImage]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const observer = new ResizeObserver(() => measureImage());
     observer.observe(container);
-    const onResize = () => measureImage();
-    window.addEventListener("resize", onResize);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", onResize);
-    };
-  }, [src, measureImage]);
+    return () => observer.disconnect();
+  }, [src, measureImage, workspaceH]);
 
   const pointerPos = (e: React.PointerEvent) => {
     const rect = imgRef.current?.getBoundingClientRect();
@@ -181,41 +231,52 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
     anchorRef.current = null;
   };
 
-  const handleConfirm = () => {
-    const img = imgRef.current;
+  const handleConfirm = async () => {
     const current = cropRef.current;
+    const display = displayRef.current;
     const natural = naturalRef.current;
-    const rect = img?.getBoundingClientRect();
-    if (!img || !rect || !natural.w || !current || current.w < MIN_SIZE || current.h < MIN_SIZE) return;
-
-    setConfirming(true);
-
-    const sx = (current.x / rect.width) * natural.w;
-    const sy = (current.y / rect.height) * natural.h;
-    const sw = (current.w / rect.width) * natural.w;
-    const sh = (current.h / rect.height) * natural.h;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(sw));
-    canvas.height = Math.max(1, Math.round(sh));
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      setConfirming(false);
+    const bitmap = bitmapRef.current;
+    if (!bitmap || !natural.w || !current || current.w < MIN_SIZE || current.h < MIN_SIZE || !display.w) {
       return;
     }
-    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-    canvas.toBlob(
-      (blob) => {
-        setConfirming(false);
-        if (!blob) return;
-        onConfirm(
-          new File([blob], file.name.replace(/(\.\w+)?$/, "_crop.jpg"), { type: "image/jpeg" })
-        );
-      },
-      "image/jpeg",
-      0.95
-    );
+    setConfirming(true);
+    try {
+      const scaleX = natural.w / display.w;
+      const scaleY = natural.h / display.h;
+      const sx = Math.round(current.x * scaleX);
+      const sy = Math.round(current.y * scaleY);
+      const sw = Math.max(1, Math.round(current.w * scaleX));
+      const sh = Math.max(1, Math.round(current.h * scaleY));
+
+      let outW = sw;
+      let outH = sh;
+      const longEdge = Math.max(sw, sh);
+      if (longEdge < MIN_CROP_LONG_EDGE) {
+        const upscale = MIN_CROP_LONG_EDGE / longEdge;
+        outW = Math.max(1, Math.round(sw * upscale));
+        outH = Math.max(1, Math.round(sh * upscale));
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = outW;
+      canvas.height = outH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, outW, outH);
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95);
+      });
+      if (!blob) return;
+
+      onConfirm(new File([blob], file.name.replace(/(\.\w+)?$/, "_crop.jpg"), { type: "image/jpeg" }));
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const ui = (
@@ -231,14 +292,14 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
 
       <div
         ref={containerRef}
-        className="flex-1 min-h-0 flex items-center justify-center px-4 py-2 overflow-hidden"
+        className="flex-1 min-h-0 flex items-center justify-center px-1 py-1 overflow-hidden"
+        style={{ minHeight: workspaceH || undefined }}
       >
         <div
-          className="relative select-none touch-none"
+          className="relative select-none touch-none shrink-0"
           style={{
             width: display.w || undefined,
             height: display.h || undefined,
-            maxWidth: "100%",
           }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -249,8 +310,8 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
             ref={imgRef}
             src={src}
             alt=""
-            className="block rounded-lg pointer-events-none max-w-full"
-            onLoad={measureImage}
+            className="block rounded-lg pointer-events-none"
+            onLoad={handleImageLoad}
             draggable={false}
           />
           <div
@@ -272,7 +333,7 @@ export function ImageCropper({ file, t, onConfirm, onCancel }: ImageCropperProps
         </button>
         <button
           type="button"
-          onClick={handleConfirm}
+          onClick={() => void handleConfirm()}
           disabled={confirming || !hasCrop}
           className="flex-1 py-3 rounded-xl bg-accent text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-70"
         >

@@ -79,8 +79,9 @@ export function HomeScreen({
   const handleCropConfirm = (cropped: File) => {
     setCropFile(null);
     setSelectedFile(cropped);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(URL.createObjectURL(cropped));
-    void runAnalysis(cropped);
+    setErrorMsg(null);
   };
 
   const runAnalysis = async (file: File) => {
