@@ -67,10 +67,18 @@ class GroqClient:
                     last_error = GroqApiError(response.status_code, detail)
                     logger.warning("Groq rate limit for %s, trying next model", use_model)
                     continue
-                if response.status_code == 400 and "json_validate" in response.text.lower():
+                body_lower = response.text.lower()
+                if response.status_code == 400 and "json_validate" in body_lower:
                     detail = response.text[:500]
                     last_error = GroqApiError(response.status_code, detail)
                     logger.warning("Groq JSON mode failed for %s, trying next model", use_model)
+                    continue
+                if response.status_code == 404 and (
+                    "model_not_found" in body_lower or "does not exist" in body_lower
+                ):
+                    detail = response.text[:500]
+                    last_error = GroqApiError(response.status_code, detail)
+                    logger.warning("Groq model unavailable %s, trying next model", use_model)
                     continue
                 if response.status_code >= 400:
                     detail = response.text[:500]

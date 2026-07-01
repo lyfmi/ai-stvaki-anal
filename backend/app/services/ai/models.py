@@ -17,8 +17,8 @@ GROQ_VISION_MODELS: frozenset[str] = frozenset({"meta-llama/llama-4-scout-17b-16
 # Separate TPD quotas per model — try lighter models when the default is rate-limited.
 GROQ_TEXT_FALLBACK_CHAIN: tuple[str, ...] = (
     "qwen/qwen3-32b",
-    "moonshotai/kimi-k2-instruct",
     "meta-llama/llama-4-scout-17b-16e-instruct",
+    "moonshotai/kimi-k2-instruct",
     "llama-3.3-70b-versatile",
 )
 
