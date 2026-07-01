@@ -20,7 +20,8 @@ from app.services.ai.match_context import (
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.providers.json_utils import parse_ai_json
 from app.services.ai.search_enricher import SearchEnricher
-from app.services.match_of_day_parser import pick_fixture_from_search, _is_placeholder_team
+from app.services.match_of_day_parser import _is_placeholder_team, pick_fixture_from_search
+from app.services.team_names import localize_match_dict
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,7 @@ class MatchOfDayService:
         finally:
             await redis.delete(REFRESH_LOCK_KEY)
 
-    async def get_match(self) -> MatchOfDayOut:
+    async def get_match(self, *, user_lang: str | None = None) -> MatchOfDayOut:
         """Read cached match only — no AI/search on user request."""
         redis = await get_redis()
         key = self._cache_key()
@@ -262,10 +263,19 @@ class MatchOfDayService:
                 except ValueError:
                     kickoff_dt = parse_kickoff_msk(data.get("kickoff_msk", ""))
             if data.get("home_team") == "—" or not kickoff_dt:
-                return MatchOfDayOut(**data, cached=True)
+                out = MatchOfDayOut(**data, cached=True)
+                return self._localize_out(out, user_lang)
             if kickoff_dt and not is_kickoff_expired(kickoff_dt, live_buffer_minutes=130):
                 data["is_live"] = kickoff_dt <= now_msk() < kickoff_dt + timedelta(minutes=130)
-                return MatchOfDayOut(**data, cached=True)
+                out = MatchOfDayOut(**data, cached=True)
+                return self._localize_out(out, user_lang)
             await redis.delete(key)
 
         return EMPTY_MATCH
+
+    @staticmethod
+    def _localize_out(match: MatchOfDayOut, user_lang: str | None) -> MatchOfDayOut:
+        if not user_lang:
+            return match
+        localized = localize_match_dict(match.model_dump(exclude={"cached"}), user_lang)
+        return MatchOfDayOut(**localized, cached=match.cached)

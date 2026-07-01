@@ -207,6 +207,8 @@ def normalize_analysis_data(data: dict[str, Any]) -> dict[str, Any]:
     premium = normalized.get("premium_insights")
     if isinstance(premium, dict):
         normalized["premium_insights"] = coerce_premium_insights(premium)
+    elif premium is not None and not isinstance(premium, dict):
+        normalized["premium_insights"] = None
 
     for field in ("risk", "confidence", "market", "explanation", "analysis_mode", "match_status_label"):
         if field in normalized and normalized[field] is not None:

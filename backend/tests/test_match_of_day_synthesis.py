@@ -68,7 +68,7 @@ async def test_synthesize_match_of_day_live_returns_recommendation():
     result = await synthesizer.synthesize_match_of_day(match, search, "ru")
 
     assert result.recommendation
-    assert "Brazil" in result.recommendation
+    assert "Бразилия" in result.recommendation
     assert result.analysis_mode == "live"
     synthesizer.client.text_json.assert_awaited()
 

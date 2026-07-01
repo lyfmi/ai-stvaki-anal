@@ -28,6 +28,7 @@ from app.services.ai.vision_guard import (
 )
 from app.services.ai.providers.groq_client import GroqClient
 from app.services.ai.rag_search import build_rag_queries_for_fixture, build_rag_queries_for_vision
+from app.services.team_names import localize_league_name, localize_team_name
 from app.services.ai.search_enricher import SearchEnricher
 
 
@@ -371,11 +372,16 @@ class Synthesizer:
         model: str | None = None,
     ) -> AnalysisResult:
         ctx = resolve_match_context_from_fixture(match, user_lang=user_lang)
+        home = str(match.get("home_team", ""))
+        away = str(match.get("away_team", ""))
+        home_label = localize_team_name(home, user_lang)
+        away_label = localize_team_name(away, user_lang)
+        league_label = localize_league_name(str(match.get("league", "Football")), user_lang)
         compact_prompt = MATCH_OF_DAY_COMPACT_TEMPLATE.format(
             lang=user_lang,
-            home=match.get("home_team", ""),
-            away=match.get("away_team", ""),
-            league=match.get("league", "Football"),
+            home=home_label,
+            away=away_label,
+            league=league_label,
             kickoff=match.get("kickoff_msk") or ctx.match_datetime_msk or "",
             status=ctx.match_status_label,
             analysis_mode=ctx.analysis_mode,
@@ -396,10 +402,8 @@ class Synthesizer:
         result.analysis_mode = ctx.analysis_mode
         result.match_status_label = ctx.match_status_label
         result = apply_post_match_overrides(result, ctx=ctx)
-        home = str(match.get("home_team", ""))
-        away = str(match.get("away_team", ""))
-        result = anchor_teams_in_recommendation(result, home, away, user_lang=user_lang)
-        result = enforce_authoritative_teams(result, home, away, user_lang=user_lang)
+        result = anchor_teams_in_recommendation(result, home_label, away_label, user_lang=user_lang)
+        result = enforce_authoritative_teams(result, home_label, away_label, user_lang=user_lang)
         result = apply_odds_policy(result, search=search, home=home, away=away)
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk

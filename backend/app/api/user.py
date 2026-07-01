@@ -131,8 +131,8 @@ async def get_match_of_day(
     user=Depends(_get_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ = user
-    return await MatchOfDayService().get_match()
+    _ = db
+    return await MatchOfDayService().get_match(user_lang=user.language)
 
 
 @router.post("/match-of-day/predict", response_model=AnalysisDetailOut)
