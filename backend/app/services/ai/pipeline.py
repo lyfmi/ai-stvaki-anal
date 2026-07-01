@@ -18,7 +18,11 @@ from app.services.ai.prompts.synthesis import (
 )
 from app.services.ai.prompts.vision import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 from app.services.ai.image_prepare import prepare_vision_image
-from app.services.ai.odds_resolver import anchor_teams_in_recommendation, apply_odds_policy
+from app.services.ai.odds_resolver import (
+    anchor_teams_in_recommendation,
+    apply_odds_policy,
+    ensure_fixture_premium_insights,
+)
 from app.services.ai.vision_guard import (
     VISION_STRICT_REPAIR,
     enforce_authoritative_teams,
@@ -407,7 +411,14 @@ class Synthesizer:
         result = apply_post_match_overrides(result, ctx=ctx)
         result = anchor_teams_in_recommendation(result, home_label, away_label, user_lang=user_lang)
         result = enforce_authoritative_teams(result, home_label, away_label, user_lang=user_lang)
-        result = apply_odds_policy(result, search=search, home=home, away=away)
+        result = apply_odds_policy(
+            result,
+            search=search,
+            home=home,
+            away=away,
+            use_market_odds=True,
+        )
+        result = ensure_fixture_premium_insights(result, home_label, away_label)
         if ctx.match_datetime_msk:
             result.match_datetime_msk = ctx.match_datetime_msk
         elif match.get("kickoff_msk"):

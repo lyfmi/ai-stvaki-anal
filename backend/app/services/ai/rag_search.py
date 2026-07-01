@@ -50,8 +50,9 @@ def build_rag_queries_for_fixture(match: dict) -> list[str]:
     league = str(match.get("league", "")).strip() or None
     pair = f"{home} vs {away}"
     odds = [
+        f"{pair} odds 1x2 betting",
         f"{pair} 1win betting odds coefficient",
-        f"{pair} 1win коэффициент",
+        f"{pair} коэффициенты букмекер прогноз",
     ]
     base = [
         f"{pair} preview prediction",

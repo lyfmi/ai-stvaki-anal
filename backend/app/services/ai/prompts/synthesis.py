@@ -125,10 +125,11 @@ If pre_match or live:
   - is_betting_recommendation=true
   - recommendation for {home} vs {away} only (e.g. "П1 — Победа {home}")
   - live: match is in progress — suggest a live bet, not a finished result
-  - coefficient ONLY if explicit 1win odds appear in facts above — else null
-  - probability_percent=null when coefficient is null
-  - NEVER invent odds from other bookmakers
+  - coefficient from facts above when decimal odds appear (Paddy Power, William Hill, etc.) — else null
+  - probability_percent: implied from coefficient (round(100/coef)) when coefficient is set, else null
+  - NEVER invent odds with no source in facts
 form_bars team names MUST be exactly "{home}" and "{away}".
+premium_insights REQUIRED with form_bars (2 teams), key_stats (>=1), non-empty h2h.
 form_bars: each team wins+draws+losses >= 3 total, not all zeros."""
 
 COMPACT_SYNTHESIS_SYSTEM_PROMPT = """Sports betting analyst.

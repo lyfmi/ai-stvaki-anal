@@ -3,6 +3,8 @@ from app.services.ai.odds_resolver import (
     apply_odds_policy,
     coefficient_from_vision,
     extract_1win_odds_from_search,
+    extract_market_odds_from_search,
+    implied_probability_percent,
 )
 from app.services.ai.image_prepare import prepare_vision_image
 from app.schemas import AnalysisResult
@@ -72,6 +74,52 @@ def test_extract_1win_odds_from_search_snippet():
     assert odds is not None
     assert odds["home"] == 1.74
     assert odds["draw"] == 3.71
+
+
+def test_extract_market_odds_from_betting_preview():
+    search = SearchPayload(
+        results=[
+            SearchResultItem(
+                query="q",
+                title="England vs Congo DR – Best bets",
+                snippet="William Hill, 1.25 · 5.00",
+                url="https://example.com",
+            )
+        ]
+    )
+    odds = extract_market_odds_from_search(search, "England", "Congo DR")
+    assert odds is not None
+    assert odds["home"] == 1.25
+    assert odds["away"] == 5.0
+
+
+def test_apply_odds_policy_uses_market_odds_for_match_of_day():
+    result = AnalysisResult(
+        recommendation="П1 — Победа Англия",
+        coefficient=None,
+        probability_percent=None,
+        analysis_mode="pre_match",
+        is_betting_recommendation=True,
+    )
+    search = SearchPayload(
+        results=[
+            SearchResultItem(
+                query="q",
+                title="England vs DR Congo Odds",
+                snippet="Bet on England v DR Congo with Paddy Power odds 1.25 5.00",
+                url="https://example.com",
+            )
+        ]
+    )
+    out = apply_odds_policy(
+        result,
+        search=search,
+        home="England",
+        away="Congo DR",
+        use_market_odds=True,
+    )
+    assert out.coefficient == 1.25
+    assert out.probability_percent == implied_probability_percent(1.25)
 
 
 def test_prepare_vision_image_upscales_small_crop():

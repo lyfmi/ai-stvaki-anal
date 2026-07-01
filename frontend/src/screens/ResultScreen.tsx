@@ -4,6 +4,7 @@ import { PostMatchResult } from "../components/PostMatchResult";
 import { AdvancedSection, AnalyticsCharts, LockedContent } from "../components/PremiumSection";
 import { SecondaryButton } from "../components/ui/PrimaryButton";
 import { resolveDisplayStatus } from "../utils/matchStatus";
+import { displayLevel } from "../utils/displayLabels";
 import type { Lang, Translations } from "../i18n";
 
 interface ResultScreenProps {
@@ -125,10 +126,13 @@ export function ResultScreen({
   const isLive = displayStatus.isLive;
   const showBettingStats = !isPostMatch;
 
+  const riskLabel = displayLevel(risk, lang);
+  const confidenceLabel = displayLevel(confidence, lang);
+
   const riskClass =
-    risk?.toLowerCase() === "low"
+    risk?.toLowerCase() === "low" || risk?.toLowerCase() === "низкая"
       ? "text-success border-success/30 bg-successMuted"
-      : risk?.toLowerCase() === "high"
+      : risk?.toLowerCase() === "high" || risk?.toLowerCase() === "высокая"
         ? "text-danger border-danger/30 bg-dangerMuted"
         : "text-textMuted border-borderSubtle bg-surfaceElevated";
 
@@ -220,10 +224,10 @@ export function ResultScreen({
                 <span
                   className={`flex-1 py-2 px-3 rounded-xl border text-center text-[10px] uppercase font-medium ${riskClass}`}
                 >
-                  {t.result_risk}: {risk || "—"}
+                  {t.result_risk}: {riskLabel}
                 </span>
                 <span className="flex-1 py-2 px-3 rounded-xl border border-borderSubtle bg-surfaceElevated text-center text-[10px] uppercase text-textMuted">
-                  {t.result_confidence}: {confidence || "—"}
+                  {t.result_confidence}: {confidenceLabel}
                 </span>
               </div>
             )}
