@@ -135,24 +135,70 @@ def extract_1win_odds_from_search(
     return None
 
 
+_SKIP_ODDS_SOURCES = (
+    "wikipedia",
+    "britannica",
+    "world atlas",
+    "visitengland",
+    "youtube.com",
+    "eta to visit",
+)
+
+
+def _score_odds_snippet(blob: str, blob_l: str, home: str, away: str, nums: list[float]) -> int:
+    if any(marker in blob_l for marker in _SKIP_ODDS_SOURCES):
+        return -1
+    if not any(m in blob_l for m in _MARKET_ODDS_MARKERS):
+        return -1
+    if not _mentions_team(blob, home) and not _mentions_team(blob, away):
+        return -1
+
+    score = 0
+    if _mentions_team(blob, home) and _mentions_team(blob, away):
+        score += 25
+    if len(nums) >= 2:
+        score += 15
+    if len(nums) >= 3:
+        score += 5
+    for bookmaker in (
+        "paddy power",
+        "william hill",
+        "betfair",
+        "smarkets",
+        "1win",
+        "букмекер",
+        "рейтинг букмекеров",
+        "ставка тв",
+        "коэффициент",
+        "кэф",
+    ):
+        if bookmaker in blob_l:
+            score += 12
+    if "1x2" in blob_l or "best bets" in blob_l:
+        score += 8
+    return score
+
+
 def extract_market_odds_from_search(
     search: SearchPayload,
     home: str,
     away: str,
 ) -> dict[str, float] | None:
     """Parse decimal 1X2 odds from reputable betting previews (not only 1win)."""
+    best: tuple[int, dict[str, float]] | None = None
     for item in search.results:
         blob = f"{item.title} {item.snippet} {item.url}"
         blob_l = blob.lower()
-        if not any(m in blob_l for m in _MARKET_ODDS_MARKERS):
-            continue
-        if not _mentions_team(blob, home) and not _mentions_team(blob, away):
-            continue
         nums = _extract_decimal_odds(blob)
         parsed = _odds_dict_from_numbers(nums)
-        if parsed:
-            return parsed
-    return None
+        if not parsed:
+            continue
+        score = _score_odds_snippet(blob, blob_l, home, away, nums)
+        if score < 0:
+            continue
+        if best is None or score > best[0]:
+            best = (score, parsed)
+    return best[1] if best else None
 
 
 def coefficient_from_market_search(

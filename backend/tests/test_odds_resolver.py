@@ -76,7 +76,26 @@ def test_extract_1win_odds_from_search_snippet():
     assert odds["draw"] == 3.71
 
 
-def test_extract_market_odds_from_betting_preview():
+def test_extract_market_odds_prefers_betting_preview_over_noise():
+    search = SearchPayload(
+        results=[
+            SearchResultItem(
+                query="q",
+                title="England | FIFA World Cup 2026",
+                snippet="England odds preview rating 4.0 stars",
+                url="https://fifa.com",
+            ),
+            SearchResultItem(
+                query="q",
+                title="England vs Congo DR – Best bets",
+                snippet="William Hill, 1.25 · 5.00 for England v DR Congo",
+                url="https://example.com",
+            ),
+        ]
+    )
+    odds = extract_market_odds_from_search(search, "England", "Congo DR")
+    assert odds is not None
+    assert odds["home"] == 1.25
     search = SearchPayload(
         results=[
             SearchResultItem(
